@@ -1,10 +1,11 @@
-#![allow(clippy::module_inception)]
-#![warn(missing_docs)]
-//! `zeroutils` is a collection of utilities for the zerocore project.
+use tokio::io::AsyncWrite;
 
 //--------------------------------------------------------------------------------------------------
-// Exports
+// Types
 //--------------------------------------------------------------------------------------------------
 
-pub mod did_key;
-pub mod io;
+/// Represents an output stream.
+pub struct OutputStream<'a> {
+    /// The writer.
+    _writer: &'a mut dyn AsyncWrite,
+}

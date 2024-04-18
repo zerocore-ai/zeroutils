@@ -1,5 +1,6 @@
 [package]
 name = "zeroutils"
+description = "A collection of utilities used across the zerocore project"
 version.workspace = true
 license.workspace = true
 repository.workspace = true
@@ -7,3 +8,10 @@ authors.workspace = true
 edition.workspace = true
 
 [dependencies]
+anyhow.workspace = true
+async-trait.workspace = true
+did-key.workspace = true
+form_urlencoded = { version = "1.2.1", features = ["alloc"] }
+futures.workspace = true
+tokio.workspace = true
+ucan.workspace = true

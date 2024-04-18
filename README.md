@@ -24,7 +24,7 @@
   </p> -->
 </div>
 
-**`zeroutils`** is a collection of utilities used across the zerocore projects.
+**`zeroutils`** is a collection of utilities used across the zerocore project.
 
 </br>
 

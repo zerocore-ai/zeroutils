@@ -1,10 +1,11 @@
-#![allow(clippy::module_inception)]
-#![warn(missing_docs)]
-//! `zeroutils` is a collection of utilities for the zerocore project.
+use tokio::io::AsyncRead;
 
 //--------------------------------------------------------------------------------------------------
-// Exports
+// Types
 //--------------------------------------------------------------------------------------------------
 
-pub mod did_key;
-pub mod io;
+/// Represents an input stream.
+pub struct InputStream<'a> {
+    /// The reader.
+    _reader: &'a mut dyn AsyncRead,
+}

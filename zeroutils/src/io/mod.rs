@@ -1,10 +1,11 @@
-#![allow(clippy::module_inception)]
-#![warn(missing_docs)]
-//! `zeroutils` is a collection of utilities for the zerocore project.
+//! Input and output utilities.
+
+mod input;
+mod output;
 
 //--------------------------------------------------------------------------------------------------
 // Exports
 //--------------------------------------------------------------------------------------------------
 
-pub mod did_key;
-pub mod io;
+pub use input::*;
+pub use output::*;
