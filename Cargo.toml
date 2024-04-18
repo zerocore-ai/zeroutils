@@ -1,0 +1,24 @@
+[workspace]
+members = ["zeroutils"]
+resolver = "2"
+
+[workspace.package]
+version = "0.1.0"
+license = "Apache-2.0"
+repository = "https://github.com/zerocore-ai/zeroutils"
+authors = ["Stephen Akinyemi <steve@zerocore.ai>"]
+edition = "2021"
+
+[workspace.dependencies]
+anyhow = "1.0.79"
+clap = { version = "4.4.11", features = ["derive", "color"] }
+futures = "0.3.30"
+semver = { version = "1.0.20", features = ["serde"] }
+serde = { version = "1.0.193", features = ["derive"] }
+structstruck = "0.4.1"
+thiserror = "1.0.56"
+tokio = { version = "1.35.1", features = ["macros", "rt-multi-thread", "net"] }
+toml = "0.8.8"
+tracing = "0.1.40"
+tracing-subscriber = "0.3.17"
+typed-builder = "0.18.0"
