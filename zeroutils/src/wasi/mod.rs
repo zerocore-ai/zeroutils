@@ -1,11 +1,10 @@
-use tokio::io::AsyncWrite;
+//! WASI utilities.
+
+pub(super) mod bindgen;
 
 //--------------------------------------------------------------------------------------------------
-// Types
+// Exports
 //--------------------------------------------------------------------------------------------------
 
-/// Represents an output stream.
-pub struct OutputStream<'a> {
-    /// The writer.
-    _writer: &'a mut dyn AsyncWrite,
-}
+pub mod io;
+pub mod state;

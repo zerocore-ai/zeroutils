@@ -1,11 +1,13 @@
 //! Input and output utilities.
 
-mod input;
-mod output;
+mod error;
+mod poll;
+mod streams;
 
 //--------------------------------------------------------------------------------------------------
 // Exports
 //--------------------------------------------------------------------------------------------------
 
-pub use input::*;
-pub use output::*;
+pub use error::*;
+pub use poll::*;
+pub use streams::*;

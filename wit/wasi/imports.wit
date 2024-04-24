@@ -1,0 +1,5 @@
+package zeroutils:wasi@0.1.0;
+
+world imports {
+    include wasi:io/imports@0.2.0;
+}

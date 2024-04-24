@@ -69,6 +69,7 @@ where
 
     async fn get_did(&self) -> anyhow::Result<String> {
         let did = format!("did:key:{}", self.inner.fingerprint());
+        println!("DID: {}", did);
         Ok(did)
     }
 

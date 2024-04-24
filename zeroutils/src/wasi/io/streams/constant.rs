@@ -1,11 +1,6 @@
-use tokio::io::AsyncRead;
-
 //--------------------------------------------------------------------------------------------------
-// Types
+// Constants
 //--------------------------------------------------------------------------------------------------
 
-/// Represents an input stream.
-pub struct InputStream<'a> {
-    /// The reader.
-    _reader: &'a mut dyn AsyncRead,
-}
+/// The maximum number of bytes that can be written to a stream at once.
+pub const MAX_WRITE_SIZE: u64 = 4096;
