@@ -2,7 +2,7 @@ use anyhow::Ok;
 use thiserror::Error;
 use wasmtime::component::Resource;
 
-use crate::wasi::{bindgen::error, state::WasiTableState};
+use crate::{bindgen::error, state::WasiTableState};
 
 //--------------------------------------------------------------------------------------------------
 // Types

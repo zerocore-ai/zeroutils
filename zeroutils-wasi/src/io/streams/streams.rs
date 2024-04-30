@@ -1,6 +1,6 @@
 use anyhow::Ok;
 
-use crate::wasi::{bindgen::streams, state::WasiTableState};
+use crate::{bindgen::streams, state::WasiTableState};
 
 use super::StreamError;
 

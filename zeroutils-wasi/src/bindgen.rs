@@ -11,7 +11,7 @@ mod generated {
         tracing: true, // Adds tracing calls to the generated code.
         trappable_imports: true, // Allow imports to trap.
         trappable_error_type: {
-            "wasi:io/streams/stream-error" => crate::wasi::io::StreamError,
+            "wasi:io/streams/stream-error" => crate::io::StreamError,
         },
         async: {
             // These are the only methods and functions that are async,
@@ -32,10 +32,10 @@ mod generated {
             ]
         },
         with: {
-            "wasi:io/streams/input-stream": crate::wasi::io::InputStreamHandle,
-            "wasi:io/streams/output-stream": crate::wasi::io::OutputStreamHandle,
-            "wasi:io/poll/pollable": crate::wasi::io::PollableHandle,
-            "wasi:io/error/error": crate::wasi::io::IoError,
+            "wasi:io/streams/input-stream": crate::io::InputStreamHandle,
+            "wasi:io/streams/output-stream": crate::io::OutputStreamHandle,
+            "wasi:io/poll/pollable": crate::io::PollableHandle,
+            "wasi:io/error/error": crate::io::IoError,
         }
     });
 }

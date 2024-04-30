@@ -10,7 +10,7 @@ use futures::{
 };
 use wasmtime::component::{Resource, ResourceTable};
 
-use crate::wasi::{bindgen::poll, state::WasiTableState};
+use crate::{bindgen::poll, state::WasiTableState};
 
 //--------------------------------------------------------------------------------------------------
 // Types

@@ -35,7 +35,12 @@
 
 ## Outline
 
+- [Acknowledgments](#acknowledgments)
 - [License](#license)
+
+## Acknowledgments
+
+This project makes use of code from the [wasmtime][wasmtime] project. The `wasmtime` project is an impactful open-source initiative that enables us to achieve our goals more efficiently by leveraging their robust WebAssembly runtime implementation.
 
 ## License
 

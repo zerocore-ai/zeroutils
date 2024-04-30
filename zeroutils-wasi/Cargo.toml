@@ -1,21 +1,21 @@
 [package]
-name = "zeroutils"
-description = "A collection of utilities used across the zerocore project"
+name = "zeroutils-wasi"
 version.workspace = true
 license.workspace = true
 repository.workspace = true
 authors.workspace = true
 edition.workspace = true
 
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
 [dependencies]
 anyhow.workspace = true
 async-trait.workspace = true
 bytes.workspace = true
-did-key.workspace = true
-form_urlencoded = { version = "1.2.1", features = ["alloc"] }
 futures.workspace = true
 thiserror.workspace = true
-tokio.workspace = true
-tracing.workspace = true
-ucan.workspace = true
-wasmtime.workspace = true
+tracing = "0.1.40"
+wasmtime = { git = "https://github.com/bytecodealliance/wasmtime", rev = "1cf3a9dad", features = [
+    "component-model",
+    "async",
+] }

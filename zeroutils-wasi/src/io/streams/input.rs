@@ -2,7 +2,7 @@ use async_trait::async_trait;
 use bytes::Bytes;
 use wasmtime::component::Resource;
 
-use crate::wasi::{
+use crate::{
     bindgen::streams,
     io::{PollableHandle, Subscribe},
     state::WasiTableState,

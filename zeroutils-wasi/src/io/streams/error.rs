@@ -1,6 +1,6 @@
 use thiserror::Error;
 
-use crate::wasi::io::IoError;
+use crate::io::IoError;
 
 use super::constant;
 
