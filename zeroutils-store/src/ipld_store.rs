@@ -12,7 +12,8 @@ use super::StoreResult;
 // Traits
 //--------------------------------------------------------------------------------------------------
 
-/// `IpldStore` is a content-addressable store for [`IPLD` (InterPlanetary Linked Data)][ipld].
+/// `IpldStore` is a content-addressable store for [`IPLD` (InterPlanetary Linked Data)][ipld] that
+/// emphasizes the structured nature of the data it stores.
 ///
 /// It can store raw bytes of data, but more importantly, it stores structured IPLDs; making it responsible for
 /// encoding and decoding them. This gives the store a chance to construct a dependency graph at insertion time.
@@ -21,11 +22,8 @@ use super::StoreResult;
 /// encoded IPLD or raw bytes. This means stored data with the same bytes will always have the same key. This makes the
 /// store ideal for deduplication of data and ensuring data integrity.
 ///
-/// `IpldStore` supports `DAG-CBOR`, `DAG-JSON`, and `DAG-PB` codecs, which all have canonical representations that make
-/// them suitable for content addressing. However, implementations may choose not to support all codecs.
-///
-/// NOTE: An implementation is responsible for how it breaks down the encoded IPLD data into blocks when it exceeds
-/// a certain pre-determined size.
+/// NOTE: An implementation is responsible for how it encodes types and how encoded IPLD data is broken down into smaller blocks
+/// when it exceeds a certain pre-determined size.
 ///
 /// [cid]: https://docs.ipfs.tech/concepts/content-addressing/
 /// [ipld]: https://ipld.io/
@@ -35,7 +33,7 @@ pub trait IpldStore {
     /// Saves an IPLD serializable object to the store and returns the `Cid` to it.
     ///
     /// This operation provides an opportunity for the store to build an internal graph of dependency.
-    fn put<T>(&self, data: IpldData<T>) -> impl Future<Output = StoreResult<Cid>>
+    fn put<T>(&self, data: T) -> impl Future<Output = StoreResult<Cid>>
     where
         T: Serialize + IpldReferences;
 
@@ -55,6 +53,9 @@ pub trait IpldStore {
         cid: impl Into<Cid>,
     ) -> impl Future<Output = StoreResult<HashSet<Cid>>>;
 
+    /// Returns the codec used to encode the data stored in the store.
+    fn supported_codec(&self) -> Codec;
+
     // /// Tries to delete all blocks reachable from the given `cid` as long as the blocks are not reachable to other blocks
     // /// outside the given `cid` and its references.
     // ///
@@ -63,19 +64,6 @@ pub trait IpldStore {
 
     // /// Returns the maximum block size the store can handle.
     // fn max_block_size(&self) -> usize;
-}
-
-/// The different types of IPLD data that can be stored.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum IpldData<T> {
-    /// DAG-CBOR encoded data.
-    DagCbor(T),
-
-    /// DAG-JSON encoded data.
-    DagJson(T),
-
-    /// DAG-PB encoded data.
-    DagPb(T),
 }
 
 /// The different types of data that can be stored in the store.
@@ -161,16 +149,6 @@ impl From<Codec> for u64 {
             Codec::DagCbor => 0x71,
             Codec::DagJson => 0x0129,
             Codec::DagPb => 0x70,
-        }
-    }
-}
-
-impl<T> From<IpldData<T>> for Codec {
-    fn from(data: IpldData<T>) -> Self {
-        match data {
-            IpldData::DagCbor(_) => Codec::DagCbor,
-            IpldData::DagJson(_) => Codec::DagJson,
-            IpldData::DagPb(_) => Codec::DagPb,
         }
     }
 }

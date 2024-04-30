@@ -10,9 +10,7 @@ use libipld::{
 use serde::{de::DeserializeOwned, Serialize};
 use tokio::sync::RwLock;
 
-use crate::{
-    utils, Codec, IpldData, IpldReferences, IpldStore, StoreData, StoreError, StoreResult,
-};
+use crate::{utils, Codec, IpldReferences, IpldStore, StoreData, StoreError, StoreResult};
 
 //--------------------------------------------------------------------------------------------------
 // Constants
@@ -32,7 +30,7 @@ pub const MEM_IPLD_STORE_BLOCK_SIZE: usize = 256 * 1024; // 256 KiB
 /// once their reference count drops to zero. It's designed for efficient in-memory storage and
 /// retrieval of blocks.
 ///
-/// Note: Currently, this implementation only supports the RAW, DAG-CBOR, and DAG-JSON codecs.
+/// Note: Currently, this implementation only supports DAG-CBOR codecs.
 pub struct MemoryIpldStore {
     blocks: Arc<RwLock<HashMap<Cid, (usize, Bytes)>>>,
 }
@@ -70,45 +68,24 @@ impl MemoryIpldStore {
 //--------------------------------------------------------------------------------------------------
 
 impl IpldStore for MemoryIpldStore {
-    async fn put<T>(&self, data: IpldData<T>) -> StoreResult<Cid>
+    async fn put<T>(&self, data: T) -> StoreResult<Cid>
     where
         T: Serialize + IpldReferences,
     {
-        match data {
-            IpldData::DagCbor(data) => {
-                // Serialize the data to bytes.
-                let bytes: Bytes =
-                    Bytes::from(serde_ipld_dagcbor::to_vec(&data).map_err(StoreError::custom)?);
+        // Serialize the data to bytes.
+        let bytes: Bytes =
+            Bytes::from(serde_ipld_dagcbor::to_vec(&data).map_err(StoreError::custom)?);
 
-                // Construct the CID from the hash of the serialized data.
-                let cid = utils::make_cid(Codec::DagCbor, &bytes);
+        // Construct the CID from the hash of the serialized data.
+        let cid = utils::make_cid(Codec::DagCbor, &bytes);
 
-                // Insert the block if it doesn't already exist.
-                if self.blocks.read().await.get(&cid).is_none() {
-                    self.blocks.write().await.insert(cid, (1, bytes));
-                    self.inc_refs(data.references()).await; // Increment reference counts of referenced blocks.
-                }
-
-                Ok(cid)
-            }
-            IpldData::DagJson(data) => {
-                // Serialize the data to bytes.
-                let bytes =
-                    Bytes::from(serde_ipld_dagjson::to_vec(&data).map_err(StoreError::custom)?);
-
-                // Construct the CID from the hash of the serialized data.
-                let cid = utils::make_cid(Codec::DagJson, &bytes);
-
-                // Insert the block if it doesn't already exist.
-                if self.blocks.read().await.get(&cid).is_none() {
-                    self.blocks.write().await.insert(cid, (1, bytes));
-                    self.inc_refs(data.references()).await; // Increment reference counts of referenced blocks.
-                }
-
-                Ok(cid)
-            }
-            d => Err(StoreError::UnsupportedCodec(Codec::from(d).into())),
+        // Insert the block if it doesn't already exist.
+        if self.blocks.read().await.get(&cid).is_none() {
+            self.blocks.write().await.insert(cid, (1, bytes));
+            self.inc_refs(data.references()).await; // Increment reference counts of referenced blocks.
         }
+
+        Ok(cid)
     }
 
     async fn put_bytes(&self, bytes: Bytes) -> StoreResult<Cid> {
@@ -134,10 +111,6 @@ impl IpldStore for MemoryIpldStore {
                 Codec::Raw => Ok(StoreData::Raw(bytes.clone())),
                 Codec::DagCbor => {
                     let data = serde_ipld_dagcbor::from_slice(bytes).map_err(StoreError::custom)?;
-                    Ok(StoreData::Ipld(data))
-                }
-                Codec::DagJson => {
-                    let data = serde_ipld_dagjson::from_slice(bytes).map_err(StoreError::custom)?;
                     Ok(StoreData::Ipld(data))
                 }
                 _ => Err(StoreError::UnsupportedCodec(cid.codec())),
@@ -179,6 +152,10 @@ impl IpldStore for MemoryIpldStore {
             },
             None => Err(StoreError::BlockNotFound(cid)),
         }
+    }
+
+    fn supported_codec(&self) -> Codec {
+        Codec::DagCbor
     }
 }
 
@@ -236,7 +213,7 @@ mod tests {
         let res: StoreData = store.get(cid).await?;
         assert_eq!(res, StoreData::Raw(Bytes::from(data)));
 
-        //================= DAG-CBOR =================
+        //================= IPLD =================
 
         let data = fixtures::Directory {
             name: "root".to_string(),
@@ -246,20 +223,9 @@ mod tests {
             ],
         };
 
-        let cid = store.put(IpldData::DagCbor(data.clone())).await?;
+        let cid = store.put(data.clone()).await?;
         let res = store.get::<fixtures::Directory>(cid).await?;
         assert_eq!(res, StoreData::Ipld(data.clone()));
-
-        //================= DAG-JSON =================
-
-        let cid = store.put(IpldData::DagJson(data.clone())).await?;
-        let res: StoreData<fixtures::Directory> = store.get(cid).await?;
-        assert_eq!(res, StoreData::Ipld(data.clone()));
-
-        //================= Unsupported Codec =================
-
-        let cid = store.put(IpldData::DagPb(data.clone())).await;
-        assert!(matches!(cid, Err(StoreError::UnsupportedCodec(_))));
 
         Ok(())
     }
@@ -276,7 +242,7 @@ mod tests {
             ],
         };
 
-        let cid = store.put(IpldData::DagCbor(data.clone())).await?;
+        let cid = store.put(data.clone()).await?;
         let res = store.get_references(cid).await?;
         let expected = data.entries.iter().cloned().collect::<HashSet<_>>();
 
