@@ -18,7 +18,7 @@ use super::StoreResult;
 /// It can store raw bytes of data, but more importantly, it stores structured IPLDs; making it responsible for
 /// encoding and decoding them. This gives the store a chance to construct a dependency graph at insertion time.
 ///
-/// The key used to identify an stored data is known as a [`Cid` (Content Identifier)][cid] which is basically a hash of the
+/// The key used to identify a stored data is known as a [`Cid` (Content Identifier)][cid] which is basically a hash of the
 /// encoded IPLD or raw bytes. This means stored data with the same bytes will always have the same key. This makes the
 /// store ideal for deduplication of data and ensuring data integrity.
 ///

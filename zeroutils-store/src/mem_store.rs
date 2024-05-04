@@ -225,7 +225,7 @@ mod tests {
 
         let cid = store.put(data.clone()).await?;
         let res = store.get::<fixtures::Directory>(cid).await?;
-        assert_eq!(res, StoreData::Ipld(data.clone()));
+        assert_eq!(res, StoreData::Ipld(data));
 
         Ok(())
     }

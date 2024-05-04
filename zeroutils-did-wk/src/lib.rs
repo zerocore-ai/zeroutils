@@ -1,26 +1,26 @@
-//! # `zeroutils-key`
-//!
-//! A library for working with cryptographic key pairs.
+//! A module for generating and managing `did:wk`s.
 
 #![warn(missing_docs)]
 #![allow(clippy::module_inception)]
 
-mod ed25519;
+mod base;
+mod builder;
+mod did;
+mod doc;
 mod error;
-mod key;
-mod p256;
-mod secp256k1;
+mod locator;
+mod regex;
 mod traits;
-mod x25519;
 
 //--------------------------------------------------------------------------------------------------
 // Exports
 //--------------------------------------------------------------------------------------------------
 
-pub use ed25519::*;
+pub use base::*;
+pub use builder::*;
+pub use did::*;
+pub use doc::*;
 pub use error::*;
-pub use key::*;
-pub use p256::*;
-pub use secp256k1::*;
+pub use locator::*;
+pub use regex::*;
 pub use traits::*;
-pub use x25519::*;

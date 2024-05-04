@@ -8,20 +8,20 @@ use serde::Serialize;
 
 /// TODO
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct Uri(http::Uri);
+pub struct Uri(fluent_uri::Uri);
 
 //--------------------------------------------------------------------------------------------------
 // Trait Implementations
 //--------------------------------------------------------------------------------------------------
 
-impl From<http::Uri> for Uri {
-    fn from(uri: http::Uri) -> Self {
+impl From<fluent_uri::Uri> for Uri {
+    fn from(uri: fluent_uri::Uri) -> Self {
         Uri(uri)
     }
 }
 
 impl Deref for Uri {
-    type Target = http::Uri;
+    type Target = fluent_uri::Uri;
 
     fn deref(&self) -> &Self::Target {
         &self.0
@@ -29,10 +29,10 @@ impl Deref for Uri {
 }
 
 impl FromStr for Uri {
-    type Err = http::uri::InvalidUri;
+    type Err = fluent_uri::uri::InvalidUri;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        http::Uri::from_str(s).map(Uri)
+        fluent_uri::Uri::from_str(s).map(Uri)
     }
 }
 
