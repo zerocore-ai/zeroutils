@@ -2,14 +2,28 @@
 
 use std::{
     collections::HashMap,
+    marker::PhantomData,
     net::{IpAddr, SocketAddr},
 };
 
 use serde::{Deserialize, Serialize};
 use structstruck::strike;
-use zeroutils_key::did_wk::DidWebKeyType;
+use zeroutils_did_wk::DidWebKeyType;
 
 use super::default::{DEFAULT_ELECTION_TIMEOUT_RANGE, DEFAULT_HEARTBEAT_INTERVAL};
+
+//--------------------------------------------------------------------------------------------------
+// Traits
+//--------------------------------------------------------------------------------------------------
+
+/// The default values for ports in the network configuration.
+pub trait PortDefaults {
+    /// The default port to listen on for peers.
+    fn default_peer_port() -> u16;
+
+    /// The default port to listen on for users.
+    fn default_user_port() -> u16;
+}
 
 //--------------------------------------------------------------------------------------------------
 // Types
@@ -19,8 +33,12 @@ strike! {
     /// The configuration for the `Zerodb` instance.
     #[strikethrough[derive(Debug, Deserialize, Serialize)]]
     /// The network configuration for cluster communication.
-    pub struct NetworkConfig<'a, const pp: u16, const up: u16> {
+    pub struct NetworkConfig<'a, D: PortDefaults> {
+        #[serde(skip)]
+        defaults: PhantomData<D>,
+
         /// The id of the node.
+        #[serde()]
         pub id: DidWebKeyType<'a>,
 
         /// Name of the node.
@@ -32,11 +50,11 @@ strike! {
         pub host: IpAddr,
 
         /// The port to listen on for peers.
-        #[serde(default = "Self::const_pp")]
+        #[serde(default = "D::default_peer_port")]
         pub peer_port: u16,
 
         /// The port to listen on for users.
-        // #[serde(default = "Self::const_up")]
+        #[serde(default = "D::default_user_port")]
         pub user_port: u16,
 
         /// The peers to connect to.
@@ -49,6 +67,7 @@ strike! {
         // pub passive: bool,
 
         /// The consensus configuration.
+        #[serde(default)]
         pub consensus:
             /// The consensus configuration.
             pub struct ConsensusConfig {
@@ -67,16 +86,6 @@ strike! {
 // Trait Implementations
 //--------------------------------------------------------------------------------------------------
 
-impl<const pp: u16, const up: u16> NetworkConfig<'_, pp, up> {
-    fn const_pp() -> u16 {
-        pp
-    }
-
-    fn const_up() -> u16 {
-        up
-    }
-}
-
 impl Default for ConsensusConfig {
     fn default() -> Self {
         Self {
@@ -92,51 +101,95 @@ impl Default for ConsensusConfig {
 
 #[cfg(test)]
 mod tests {
-    use std::{net::Ipv4Addr, str::FromStr};
+    use crate::network::tests::fixtures::MockPortDefaults;
 
     use super::*;
+    use std::{net::Ipv4Addr, str::FromStr};
+
+    mod fixtures {
+        use super::*;
+
+        pub struct MockPortDefaults;
+        impl PortDefaults for MockPortDefaults {
+            fn default_peer_port() -> u16 {
+                7700
+            }
+
+            fn default_user_port() -> u16 {
+                7711
+            }
+        }
+    }
 
     #[test]
-    fn test_full_toml() -> anyhow::Result<()> {
+    fn test_toml_full() -> anyhow::Result<()> {
         let toml = r#"
-        id = did:wk:4b72a445-d90d-4fd7-9711-b0e587ab6a21
+        id = "did:wk:z6MkoVs2h6TnfyY8fx2ZqpREWSLS8rBDQmGpyXgFpg63CSUb"
         name = "alice"
         host = "127.0.0.1"
         peer_port = 7700
-        client_port = 7711
+        user_port = 7711
 
         [seeds]
-        did:wk:4b72a445-d90d-4fd7-9711-b0e587ab6a21 = "127.0.0.1:7800"
-        did:wk:0713a29e-9197-448a-9d34-e4ab1aa07eea = "127.0.0.1:7900"
+        "did:wk:m7QFAoSJPFzmaqQiTkLrWQ6pbYrmI6L07Fkdg8SCRpjP1Ig" = "127.0.0.1:7800"
+        "did:wk:z6MknLif7jhwt6jUfn14EuDnxWoSHkkajyDi28QMMH5eS1DL" = "127.0.0.1:7900"
 
         [consensus]
         heartbeat_interval = 1000
         election_timeout_range = [150, 300]
         "#;
 
-        // let config: NetworkConfig = toml::from_str(toml)?;
+        let config: NetworkConfig<MockPortDefaults> = toml::from_str(toml)?;
 
-        // assert_eq!(
-        //     config.id,
-        //     DidWebKey::from_str("4b72a445-d90d-4fd7-9711-b0e587ab6a21")?
-        // );
-        // assert_eq!(config.host, IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)));
-        // assert_eq!(config.peer_port, 7700);
-        // assert_eq!(config.client_port, 7711);
-        // assert_eq!(config.seeds, {
-        //     let mut peers = HashMap::new();
-        //     peers.insert(
-        //         DidWebKey::from_str("4b72a445-d90d-4fd7-9711-b0e587ab6a21")?,
-        //         SocketAddr::new(Ipv4Addr::new(127, 0, 0, 1).into(), 7800),
-        //     );
-        //     peers.insert(
-        //         DidWebKey::from_str("0713a29e-9197-448a-9d34-e4ab1aa07eea")?,
-        //         SocketAddr::new(Ipv4Addr::new(127, 0, 0, 1).into(), 7900),
-        //     );
-        //     peers
-        // });
-        // assert_eq!(config.consensus.heartbeat_interval, 1000);
-        // assert_eq!(config.consensus.election_timeout_range, (150, 300));
+        assert_eq!(
+            config.id,
+            DidWebKeyType::from_str("did:wk:z6MkoVs2h6TnfyY8fx2ZqpREWSLS8rBDQmGpyXgFpg63CSUb")?
+        );
+        assert_eq!(config.host, IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)));
+        assert_eq!(config.peer_port, 7700);
+        assert_eq!(config.user_port, 7711);
+        assert_eq!(config.seeds, {
+            let mut peers = HashMap::new();
+            peers.insert(
+                DidWebKeyType::from_str("did:wk:m7QFAoSJPFzmaqQiTkLrWQ6pbYrmI6L07Fkdg8SCRpjP1Ig")?,
+                SocketAddr::new(Ipv4Addr::new(127, 0, 0, 1).into(), 7800),
+            );
+            peers.insert(
+                DidWebKeyType::from_str("did:wk:z6MknLif7jhwt6jUfn14EuDnxWoSHkkajyDi28QMMH5eS1DL")?,
+                SocketAddr::new(Ipv4Addr::new(127, 0, 0, 1).into(), 7900),
+            );
+            peers
+        });
+        assert_eq!(config.consensus.heartbeat_interval, 1000);
+        assert_eq!(config.consensus.election_timeout_range, (150, 300));
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_toml_defaults() -> anyhow::Result<()> {
+        let toml = r#"
+        id = "did:wk:z6MkoVs2h6TnfyY8fx2ZqpREWSLS8rBDQmGpyXgFpg63CSUb"
+        "#;
+
+        let config: NetworkConfig<MockPortDefaults> = toml::from_str(toml)?;
+
+        assert_eq!(
+            config.id,
+            DidWebKeyType::from_str("did:wk:z6MkoVs2h6TnfyY8fx2ZqpREWSLS8rBDQmGpyXgFpg63CSUb")?
+        );
+        assert_eq!(config.host, IpAddr::V4(Ipv4Addr::LOCALHOST));
+        assert_eq!(config.peer_port, 7700);
+        assert_eq!(config.user_port, 7711);
+        assert!(config.seeds.is_empty());
+        assert_eq!(
+            config.consensus.heartbeat_interval,
+            DEFAULT_HEARTBEAT_INTERVAL
+        );
+        assert_eq!(
+            config.consensus.election_timeout_range,
+            DEFAULT_ELECTION_TIMEOUT_RANGE
+        );
 
         Ok(())
     }

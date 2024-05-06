@@ -12,4 +12,7 @@ edition.workspace = true
 anyhow.workspace = true
 serde.workspace = true
 structstruck = "0.4.1"
-zeroutils-key = { version = "0.1.0", path = "../zeroutils-key" }
+zeroutils-did-wk = { version = "0.1.0", path = "../zeroutils-did-wk" }
+
+[dev-dependencies]
+toml = "0.8.12"

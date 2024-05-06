@@ -1,6 +1,6 @@
 use std::{fmt::Display, str::FromStr};
 
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use zeroutils_key::{AsymmetricKey, Ed25519PubKey, P256PubKey, PubKey, Secp256k1PubKey};
 
 use super::{
@@ -19,7 +19,7 @@ use super::{
 ///
 /// [did-wk]: https://github.com/zerocore-ai/did-wk
 /// [did-key]: https://w3c-ccg.github.io/did-method-key/
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct DidWebKey<P> {
     /// Copy-on-write reference to the public key
     pub(crate) public_key: P,
@@ -28,7 +28,6 @@ pub struct DidWebKey<P> {
     pub(crate) base: Base,
 
     /// Optional component that specifies the web location (host and path) where the DID document can be resolved.
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) locator_component: Option<LocatorComponent>,
 }
 
@@ -55,19 +54,15 @@ pub struct DidWebKey<P> {
 ///
 /// [did-wk]: https://github.com/zerocore-ai/did-wk
 /// [did-key]: https://w3c-ccg.github.io/did-method-key/
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
-#[serde(tag = "type")]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum DidWebKeyType<'a> {
     /// `ed25519` public key.
-    #[serde(rename = "ed25519")]
     Ed25519(Ed25519DidWebKey<'a>),
 
     /// `NIST P-256` public key.
-    #[serde(rename = "p256")]
     P256(P256DidWebKey<'a>),
 
     /// `secp256k1` public key.
-    #[serde(rename = "secp256k1")]
     Secp256k1(Secp256k1DidWebKey<'a>),
 }
 
@@ -181,6 +176,26 @@ impl<'a> From<&str> for DidWebKeyType<'a> {
     }
 }
 
+impl<'a> Serialize for DidWebKeyType<'a> {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        let did_string = self.to_string();
+        serializer.serialize_str(&did_string)
+    }
+}
+
+impl<'de, 'a> Deserialize<'de> for DidWebKeyType<'a> {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let did_string = String::deserialize(deserializer)?;
+        DidWebKeyType::from_str(&did_string).map_err(serde::de::Error::custom)
+    }
+}
+
 //--------------------------------------------------------------------------------------------------
 // Trait Implementations: DidWebKey
 //--------------------------------------------------------------------------------------------------
@@ -265,6 +280,33 @@ where
             base: Base::Base58Btc,
             locator_component: None,
         }
+    }
+}
+
+impl<P> Serialize for DidWebKey<P>
+where
+    P: KeyEncode,
+{
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        let did_string = self.to_string();
+        serializer.serialize_str(&did_string)
+    }
+}
+
+impl<'de, P> Deserialize<'de> for DidWebKey<P>
+where
+    P: KeyDecode,
+    DidError: From<P::Error>,
+{
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let did_string = String::deserialize(deserializer)?;
+        DidWebKey::from_str(&did_string).map_err(serde::de::Error::custom)
     }
 }
 
@@ -401,6 +443,7 @@ mod tests {
 
         let serialized = serde_json::to_string(&did_web_key)?;
         tracing::debug!(?serialized);
+
         let deserialized = serde_json::from_str(&serialized)?;
         assert_eq!(did_web_key, deserialized);
 
