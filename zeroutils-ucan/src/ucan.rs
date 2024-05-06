@@ -12,7 +12,11 @@ use super::UcanError;
 // Types
 //--------------------------------------------------------------------------------------------------
 
-/// A representation of a [UCAN (User-Controlled Authorization Network)][ucan] token.
+/// Represents a [UCAN (User-Controlled Authorization Network)][ucan] token.
+///
+/// UCANs are a decentralized authorization scheme that offers fine-grained, user-centric
+/// control over permissions. Unlike traditional access tokens, UCANs can be chained for
+/// delegation, enabling complex authorization scenarios without a central authority.
 ///
 /// [ucan]: https://github.com/ucan-wg/spec
 #[derive(Debug, Clone, PartialEq, Eq)]

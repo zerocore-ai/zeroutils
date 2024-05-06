@@ -128,15 +128,21 @@ impl FromStr for Path {
     }
 }
 
-impl From<&str> for Host {
-    fn from(s: &str) -> Self {
-        s.parse().unwrap()
+impl<T> From<T> for Host
+where
+    T: AsRef<str>,
+{
+    fn from(s: T) -> Self {
+        s.as_ref().parse().unwrap()
     }
 }
 
-impl From<&str> for Path {
-    fn from(s: &str) -> Self {
-        s.parse().unwrap()
+impl<T> From<T> for Path
+where
+    T: AsRef<str>,
+{
+    fn from(s: T) -> Self {
+        s.as_ref().parse().unwrap()
     }
 }
 
@@ -262,6 +268,12 @@ mod tests {
         );
         assert_eq!(Host::from_str(ipvfut)?, Host::IpLiteral(ipvfut.to_owned()));
 
+        // From<T: AsRef<str>>
+        assert_eq!(
+            Host::from(String::from(domain)),
+            Host::Domain(domain.to_owned())
+        );
+
         Ok(())
     }
 
@@ -272,6 +284,9 @@ mod tests {
 
         assert_eq!(Path::from_str(path)?, Path(path.to_owned()));
         assert_eq!(Path::from_str(path_empty)?, Path(path_empty.to_owned()));
+
+        // From<T: AsRef<str>>
+        assert_eq!(Path::from(String::from(path)), Path(path.to_owned()));
 
         Ok(())
     }

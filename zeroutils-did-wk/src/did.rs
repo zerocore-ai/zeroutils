@@ -170,9 +170,12 @@ impl<'a> FromStr for DidWebKeyType<'a> {
     }
 }
 
-impl<'a> From<&str> for DidWebKeyType<'a> {
-    fn from(did: &str) -> Self {
-        DidWebKeyType::from_str(did).unwrap()
+impl<'a, T> From<T> for DidWebKeyType<'a>
+where
+    T: AsRef<str>,
+{
+    fn from(did: T) -> Self {
+        DidWebKeyType::from_str(did.as_ref()).unwrap()
     }
 }
 
