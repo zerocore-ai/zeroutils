@@ -66,11 +66,15 @@ pub struct Path(String);
 
 impl LocatorComponent {
     /// Creates a new `LocatorComponent`.
-    pub fn new(host: impl Into<Host>, port: Option<u16>, path: Option<Path>) -> Self {
+    pub fn new(
+        host: impl Into<Host>,
+        port: impl Into<Option<u16>>,
+        path: impl Into<Option<Path>>,
+    ) -> Self {
         Self {
             host: host.into(),
-            port,
-            path,
+            port: port.into(),
+            path: path.into(),
         }
     }
 
@@ -243,7 +247,7 @@ mod tests {
 
     #[test]
     fn test_locator_constructor() {
-        let locator = LocatorComponent::new("steve.zerocore.ai", Some(443), Some("/public".into()));
+        let locator = LocatorComponent::new("steve.zerocore.ai", 443, Path::from("/public"));
 
         assert_eq!(
             locator.host(),
@@ -268,12 +272,6 @@ mod tests {
         );
         assert_eq!(Host::from_str(ipvfut)?, Host::IpLiteral(ipvfut.to_owned()));
 
-        // From<T: AsRef<str>>
-        assert_eq!(
-            Host::from(String::from(domain)),
-            Host::Domain(domain.to_owned())
-        );
-
         Ok(())
     }
 
@@ -285,15 +283,12 @@ mod tests {
         assert_eq!(Path::from_str(path)?, Path(path.to_owned()));
         assert_eq!(Path::from_str(path_empty)?, Path(path_empty.to_owned()));
 
-        // From<T: AsRef<str>>
-        assert_eq!(Path::from(String::from(path)), Path(path.to_owned()));
-
         Ok(())
     }
 
     #[test]
     fn test_locator_display() {
-        let locator = LocatorComponent::new("steve.zerocore.ai", Some(443), Some("/public".into()));
+        let locator = LocatorComponent::new("steve.zerocore.ai", 443, Path::from("/public"));
         assert_eq!(locator.to_string(), "steve.zerocore.ai:443/public");
     }
 
@@ -306,11 +301,11 @@ mod tests {
 
         assert_eq!(
             LocatorComponent::from_str(locator)?,
-            LocatorComponent::new("steve.zerocore.ai", Some(443), Some("/public".into()))
+            LocatorComponent::new("steve.zerocore.ai", 443, Path::from("/public"))
         );
         assert_eq!(
             LocatorComponent::from_str(locator_no_port)?,
-            LocatorComponent::new("steve.zerocore.ai", None, Some("/public".into()))
+            LocatorComponent::new("steve.zerocore.ai", None, Path::from("/public"))
         );
         assert_eq!(
             LocatorComponent::from_str(locator_no_path)?,
@@ -326,9 +321,9 @@ mod tests {
 
     #[test_log::test]
     fn test_locator_serde() -> anyhow::Result<()> {
-        let locator = LocatorComponent::new("steve.zerocore.ai", Some(443), Some("/public".into()));
+        let locator = LocatorComponent::new("steve.zerocore.ai", 443, Path::from("/public"));
         let locator_no_port =
-            LocatorComponent::new("steve.zerocore.ai", None, Some("/public".into()));
+            LocatorComponent::new("steve.zerocore.ai", None, Path::from("/public"));
         let locator_no_path = LocatorComponent::new("192.168.123.132", Some(443), None);
         let locator_no_port_or_path = LocatorComponent::new("steve.zerocore.ai", None, None);
 

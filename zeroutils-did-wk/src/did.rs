@@ -1,7 +1,7 @@
 use std::{fmt::Display, str::FromStr};
 
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
-use zeroutils_key::{AsymmetricKey, Ed25519PubKey, P256PubKey, PubKey, Secp256k1PubKey};
+use zeroutils_key::{Ed25519PubKey, KeyPairGenerate, P256PubKey, Secp256k1PubKey};
 
 use super::{
     Base, Did, DidError, DidResult, DidWebKeyBuilder, KeyDecode, KeyEncode, LocatorComponent,
@@ -20,8 +20,8 @@ use super::{
 /// [did-wk]: https://github.com/zerocore-ai/did-wk
 /// [did-key]: https://w3c-ccg.github.io/did-method-key/
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct DidWebKey<P> {
-    /// Copy-on-write reference to the public key
+pub struct DidWebKey<P = ()> {
+    /// The public key.
     pub(crate) public_key: P,
 
     /// The base encoding to use for the public key.
@@ -97,6 +97,20 @@ pub type Secp256k1DidWebKey<'a> = DidWebKey<Secp256k1PubKey<'a>>;
 // Methods
 //--------------------------------------------------------------------------------------------------
 
+impl DidWebKey {
+    /// Creates a new `DidWebKey` from a key and base encoding.
+    pub fn from_key<'a, K>(key: &'a K, base: Base) -> DidWebKey<K::PublicKey>
+    where
+        K: KeyPairGenerate<'a> + 'a,
+    {
+        DidWebKey {
+            public_key: key.get_public_key(),
+            locator_component: None,
+            base,
+        }
+    }
+}
+
 impl<P> DidWebKey<P> {
     /// Creates a new `DidWebKey` builder.
     pub fn builder() -> DidWebKeyBuilder {
@@ -170,12 +184,21 @@ impl<'a> FromStr for DidWebKeyType<'a> {
     }
 }
 
-impl<'a, T> From<T> for DidWebKeyType<'a>
-where
-    T: AsRef<str>,
-{
-    fn from(did: T) -> Self {
-        DidWebKeyType::from_str(did.as_ref()).unwrap()
+impl<'a> From<&str> for DidWebKeyType<'a> {
+    fn from(did: &str) -> Self {
+        DidWebKeyType::from_str(did).unwrap()
+    }
+}
+
+impl<'a> From<String> for DidWebKeyType<'a> {
+    fn from(did: String) -> Self {
+        DidWebKeyType::from_str(&did).unwrap()
+    }
+}
+
+impl<'a> From<&String> for DidWebKeyType<'a> {
+    fn from(did: &String) -> Self {
+        DidWebKeyType::from_str(did).unwrap()
     }
 }
 
@@ -251,39 +274,31 @@ where
     }
 }
 
+impl<P> From<String> for DidWebKey<P>
+where
+    P: KeyDecode,
+    DidError: From<P::Error>,
+{
+    fn from(did: String) -> Self {
+        DidWebKey::from_str(&did).unwrap()
+    }
+}
+
+impl<P> From<&String> for DidWebKey<P>
+where
+    P: KeyDecode,
+    DidError: From<P::Error>,
+{
+    fn from(did: &String) -> Self {
+        DidWebKey::from_str(did).unwrap()
+    }
+}
+
 impl<P> Did for DidWebKey<P>
 where
     P: KeyEncode + KeyDecode,
     DidError: From<P::Error>,
 {
-}
-
-impl<'a, P, S> From<&'a AsymmetricKey<'a, P, S>> for DidWebKey<PubKey<'a, P>>
-where
-    P: Clone,
-    PubKey<'a, P>: From<&'a AsymmetricKey<'a, P, S>>,
-{
-    fn from(public_key: &'a AsymmetricKey<'a, P, S>) -> Self {
-        Self {
-            public_key: PubKey::from(public_key),
-            base: Base::Base58Btc,
-            locator_component: None,
-        }
-    }
-}
-
-impl<'a, P, S> From<AsymmetricKey<'a, P, S>> for DidWebKey<PubKey<'a, P>>
-where
-    P: Clone,
-    PubKey<'a, P>: From<AsymmetricKey<'a, P, S>>,
-{
-    fn from(public_key: AsymmetricKey<'a, P, S>) -> Self {
-        Self {
-            public_key: PubKey::from(public_key),
-            base: Base::Base58Btc,
-            locator_component: None,
-        }
-    }
 }
 
 impl<P> Serialize for DidWebKey<P>
@@ -321,9 +336,31 @@ where
 mod tests {
     use zeroutils_key::{Ed25519KeyPair, KeyPairGenerate, P256KeyPair, Secp256k1KeyPair};
 
-    use crate::Host;
+    use crate::Path;
 
     use super::*;
+
+    #[test]
+    fn test_did_web_key_from_key() -> anyhow::Result<()> {
+        let rng = &mut rand::thread_rng();
+
+        let key_pair = Ed25519KeyPair::generate(rng)?;
+        let did_web_key = DidWebKey::from_key(&key_pair, Base::Base58Btc);
+
+        assert_eq!(did_web_key.public_key(), &key_pair.get_public_key());
+
+        let key_pair = P256KeyPair::generate(rng)?;
+        let did_web_key = DidWebKey::from_key(&key_pair, Base::Base64);
+
+        assert_eq!(did_web_key.public_key(), &key_pair.get_public_key());
+
+        let key_pair = Secp256k1KeyPair::generate(rng)?;
+        let did_web_key = DidWebKey::from_key(&key_pair, Base::Base32Z);
+
+        assert_eq!(did_web_key.public_key(), &key_pair.get_public_key());
+
+        Ok(())
+    }
 
     #[test]
     fn test_did_web_key_type_from_str() -> anyhow::Result<()> {
@@ -355,9 +392,9 @@ mod tests {
                 public_key,
                 base,
                 locator_component: Some(LocatorComponent::new(
-                    Host::Domain("steve.zerocore.ai".to_owned()),
-                    Some(8080),
-                    Some("/public".into())
+                    "steve.zerocore.ai",
+                    8080,
+                    Path::from("/public")
                 )),
             })
         );
@@ -397,9 +434,9 @@ mod tests {
             public_key,
             base: Base::Base58Btc,
             locator_component: Some(LocatorComponent::new(
-                Host::Domain("steve.zerocore.ai".to_owned()),
-                Some(8080),
-                Some("/public".into()),
+                "steve.zerocore.ai",
+                8080,
+                Path::from("/public"),
             )),
         };
 
@@ -425,9 +462,9 @@ mod tests {
             public_key,
             base: Base::Base32Z,
             locator_component: Some(LocatorComponent::new(
-                Host::Domain("steve.zerocore.ai".to_owned()),
-                Some(8080),
-                Some("/public".into()),
+                "steve.zerocore.ai",
+                8080,
+                Path::from("/public"),
             )),
         };
 
