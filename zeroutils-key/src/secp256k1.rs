@@ -65,7 +65,9 @@ impl PublicKeyGenerate for Secp256k1PubKey<'_> {
     }
 }
 
-impl KeyPairGenerate for Secp256k1KeyPair<'_> {
+impl<'a> KeyPairGenerate<'a> for Secp256k1KeyPair<'a> {
+    type PublicKey = Secp256k1PubKey<'a>;
+
     fn generate(rng: &mut impl CryptoRngCore) -> KeyResult<Self> {
         let private_key = SecretKey::random(rng);
         let public_key = PublicKey::from_secret_key(&private_key);
@@ -82,6 +84,10 @@ impl KeyPairGenerate for Secp256k1KeyPair<'_> {
             public: Cow::Owned(public_key),
             private: private_key,
         })
+    }
+
+    fn get_public_key(&'a self) -> Self::PublicKey {
+        self.into()
     }
 }
 
@@ -171,6 +177,10 @@ mod tests {
         let key_pair2 = Secp256k1KeyPair::from_private_key(&private_key_bytes)?;
 
         assert_eq!(key_pair, key_pair2);
+
+        let public_key2 = key_pair2.get_public_key();
+
+        assert_eq!(public_key, public_key2);
 
         Ok(())
     }

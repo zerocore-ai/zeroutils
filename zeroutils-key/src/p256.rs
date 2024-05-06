@@ -63,7 +63,9 @@ impl PublicKeyGenerate for P256PubKey<'_> {
     }
 }
 
-impl KeyPairGenerate for P256KeyPair<'_> {
+impl<'a> KeyPairGenerate<'a> for P256KeyPair<'a> {
+    type PublicKey = P256PubKey<'a>;
+
     fn generate(rng: &mut impl CryptoRngCore) -> KeyResult<Self> {
         let signing_key = SigningKey::random(rng);
         Ok(Self {
@@ -78,6 +80,10 @@ impl KeyPairGenerate for P256KeyPair<'_> {
             public: Cow::Owned(*signing_key.verifying_key()),
             private: signing_key,
         })
+    }
+
+    fn get_public_key(&'a self) -> Self::PublicKey {
+        self.into()
     }
 }
 
@@ -170,6 +176,10 @@ mod tests {
         let private_key = P256KeyPair::from_private_key(&private_key_bytes)?;
 
         assert_eq!(key_pair, private_key);
+
+        let public_key2 = key_pair.get_public_key();
+
+        assert_eq!(public_key, public_key2);
 
         Ok(())
     }

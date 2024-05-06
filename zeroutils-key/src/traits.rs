@@ -36,7 +36,10 @@ pub trait PublicKeyGenerate {
 }
 
 /// A trait for constructing a key pair.
-pub trait KeyPairGenerate {
+pub trait KeyPairGenerate<'a> {
+    /// The type of the public key.
+    type PublicKey;
+
     /// Generates a key pair from a cryptographically secure random number generator.
     fn generate(rng: &mut impl CryptoRngCore) -> KeyResult<Self>
     where
@@ -46,6 +49,9 @@ pub trait KeyPairGenerate {
     fn from_private_key(bytes: &[u8]) -> KeyResult<Self>
     where
         Self: Sized;
+
+    /// Returns the public key.
+    fn get_public_key(&'a self) -> Self::PublicKey;
 }
 
 /// A trait for getting the public key bytes.

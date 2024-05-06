@@ -56,7 +56,9 @@ impl PublicKeyGenerate for Ed25519PubKey<'_> {
     }
 }
 
-impl KeyPairGenerate for Ed25519KeyPair<'_> {
+impl<'a> KeyPairGenerate<'a> for Ed25519KeyPair<'a> {
+    type PublicKey = Ed25519PubKey<'a>;
+
     fn generate(rng: &mut impl CryptoRngCore) -> KeyResult<Self> {
         let signing_key = SigningKey::generate(rng);
         Ok(Self {
@@ -71,6 +73,10 @@ impl KeyPairGenerate for Ed25519KeyPair<'_> {
             public: Cow::Owned(signing_key.verifying_key()),
             private: signing_key,
         })
+    }
+
+    fn get_public_key(&'a self) -> Self::PublicKey {
+        self.into()
     }
 }
 
@@ -159,6 +165,10 @@ mod tests {
         let private_key = Ed25519KeyPair::from_private_key(&private_key_bytes)?;
 
         assert_eq!(key_pair, private_key);
+
+        let public_key2 = key_pair.get_public_key();
+
+        assert_eq!(public_key, public_key2);
 
         Ok(())
     }
