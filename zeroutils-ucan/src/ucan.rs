@@ -16,25 +16,25 @@ use super::UcanError;
 ///
 /// [ucan]: https://github.com/ucan-wg/spec
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Ucan<'a, I, H = (), S = ()>
+pub struct Ucan<'a, S, H = (), V = ()>
 where
-    I: IpldStore,
+    S: IpldStore,
 {
     /// The header of the UCAN, containing metadata and cryptographic information.
     pub header: H,
 
     /// The payload of the UCAN, containing the actual authorization data and claims.
-    pub payload: UcanPayload<'a, I>,
+    pub payload: UcanPayload<'a, S>,
 
     /// The signature of the UCAN, proving its authenticity.
-    pub signature: S,
+    pub signature: V,
 }
 
 /// A signed UCAN with header and signature.
-pub type SignedUcan<'a, I> = Ucan<'a, I, UcanHeader, UcanSignature>;
+pub type SignedUcan<'a, S> = Ucan<'a, S, UcanHeader, UcanSignature>;
 
 /// Unsigned UCAN with header and payload.
-pub type UnsignedUcan<'a, I, H = ()> = Ucan<'a, I, H, ()>;
+pub type UnsignedUcan<'a, S, H = ()> = Ucan<'a, S, H, ()>;
 
 //--------------------------------------------------------------------------------------------------
 // Types: Serde
@@ -64,12 +64,12 @@ impl Ucan<'_, PlaceholderStore> {
     }
 }
 
-impl<'a, I, H, S> Ucan<'a, I, H, S>
+impl<'a, S, H, V> Ucan<'a, S, H, V>
 where
-    I: IpldStore,
+    S: IpldStore,
 {
     /// Constructs a UCAN from its individual components.
-    pub fn from_parts(header: H, payload: UcanPayload<'a, I>, signature: impl Into<S>) -> Self {
+    pub fn from_parts(header: H, payload: UcanPayload<'a, S>, signature: impl Into<V>) -> Self {
         Self {
             header,
             payload,
@@ -78,7 +78,7 @@ where
     }
 
     /// Transforms the Ucan to use a different IPLD store.
-    pub fn use_store<T>(self, store: T) -> Ucan<'a, T, H, S>
+    pub fn use_store<T>(self, store: T) -> Ucan<'a, T, H, V>
     where
         T: IpldStore,
     {
@@ -90,7 +90,7 @@ where
     }
 
     /// Updates the UCAN to use a specified JWS algorithm.
-    pub fn use_alg(self, alg: JwsAlgorithm) -> Ucan<'a, I, UcanHeader, S> {
+    pub fn use_alg(self, alg: JwsAlgorithm) -> Ucan<'a, S, UcanHeader, V> {
         Ucan {
             header: alg.into(),
             payload: self.payload,
@@ -99,12 +99,12 @@ where
     }
 }
 
-impl<'a, I, H> UnsignedUcan<'a, I, H>
+impl<'a, S, H> UnsignedUcan<'a, S, H>
 where
-    I: IpldStore,
+    S: IpldStore,
 {
     /// Signs an unsigned UCAN using the provided keypair.
-    pub fn sign<K>(self, keypair: &K) -> UcanResult<SignedUcan<'a, I>>
+    pub fn sign<K>(self, keypair: &K) -> UcanResult<SignedUcan<'a, S>>
     where
         K: Sign + JwsAlgName,
     {
@@ -120,9 +120,9 @@ where
     }
 }
 
-impl<'a, I> SignedUcan<'a, I>
+impl<'a, S> SignedUcan<'a, S>
 where
-    I: IpldStore,
+    S: IpldStore,
 {
     /// Verifies the integrity of the signed UCAN.
     pub fn verify(&self) -> UcanResult<()> {
@@ -136,18 +136,18 @@ where
 // Trait Implementations
 //--------------------------------------------------------------------------------------------------
 
-impl<'a, I> Display for UnsignedUcan<'a, I, UcanHeader>
+impl<'a, S> Display for UnsignedUcan<'a, S, UcanHeader>
 where
-    I: IpldStore,
+    S: IpldStore,
 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}.{}", self.header, self.payload)
     }
 }
 
-impl<'a, I> Display for SignedUcan<'a, I>
+impl<'a, S> Display for SignedUcan<'a, S>
 where
-    I: IpldStore,
+    S: IpldStore,
 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}.{}.{}", self.header, self.payload, self.signature)
@@ -383,7 +383,7 @@ mod tests {
 
         let encoded = signed_ucan.to_string();
         tracing::debug!(?encoded);
-        assert_eq!(encoded, "eyJhbGciOiJFZERTQSIsInR5cCI6IkpXVCJ9.eyJ1Y3YiOiIwLjEwLjAtYWxwaGEuMSIsImlzcyI6ImRpZDp3azptNXdFQ3R4aTJreFJtZTJ1aHN3dTQ2Qnd6UnRxdmhFem5XS3VjRnJycGgwSTcrdW8iLCJhdWQiOiJkaWQ6d2s6YjV1YTVsNHdnY3A0NnpydG4zaWhqam11NWdieWh1c215dDViaWFubDVvdjJ5cnZqN3duaDR2dGkiLCJleHAiOm51bGwsImNhcCI6e319.3vSKJiWMUBf_rXFOqiSG-PoGHZG63fPOqIeCoLKX0IW4cUVPxCw94k6rg6e5lKmWu27XKUt1RYQJXoA91su6BA");
+        assert_eq!(encoded, "eyJhbGciOiJFZERTQSIsInR5cCI6IkpXVCJ9.eyJ1Y3YiOiIwLjEwLjAtYWxwaGEuMSIsImlzcyI6ImRpZDp3azptNXdFQ3R4aTJreFJtZTJ1aHN3dTQ2Qnd6UnRxdmhFem5XS3VjRnJycGgwSTcrdW8iLCJhdWQiOiJkaWQ6d2s6YjV1YTVsNHdnY3A0NnpydG4zaWhqam11NWdieWh1c215dDViaWFubDVvdjJ5cnZqN3duaDR2dGkiLCJleHAiOm51bGwsImNhcCI6e319.3vSKJiWMUBf_rXFOqiV-PoGHZG63fPOqIeCoLKX0IW4cUVPxCw94k6rg6e5lKmWu27XKUt1RYQJXoA91su6BA");
 
         let decoded: SignedUcan<PlaceholderStore> = encoded.parse()?;
         assert_eq!(decoded, signed_ucan);

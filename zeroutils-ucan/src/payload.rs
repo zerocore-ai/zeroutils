@@ -26,9 +26,9 @@ pub const VERSION: &str = "0.10.0-alpha.1";
 
 /// Represents the payload part of a UCAN token, which contains all the claims and data necessary for the authorization process.
 #[derive(Debug, PartialEq, Eq, Clone)]
-pub struct UcanPayload<'a, I>
+pub struct UcanPayload<'a, S>
 where
-    I: IpldStore,
+    S: IpldStore,
 {
     /// The DID (Decentralized Identifier) of the issuer who issued the UCAN.
     pub(crate) issuer: DidWebKeyType<'a>,
@@ -55,7 +55,7 @@ where
     pub(crate) proofs: UcanProofs,
 
     /// The data store used to resolve proof links in the UCAN.
-    pub(crate) store: I,
+    pub(crate) store: S,
 }
 
 //--------------------------------------------------------------------------------------------------
@@ -82,7 +82,6 @@ struct UcanPayloadSerde {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     fct: Option<UcanFacts>,
 
-    #[serde(rename = "cap")]
     cap: UcanCapabilities,
 
     #[serde(default, skip_serializing_if = "UcanProofs::is_empty")]
@@ -93,14 +92,14 @@ struct UcanPayloadSerde {
 // Methods
 //--------------------------------------------------------------------------------------------------
 
-impl<'a, I> UcanPayload<'a, I>
+impl<'a, S> UcanPayload<'a, S>
 where
-    I: IpldStore,
+    S: IpldStore,
 {
     /// Allows changing the data store for the UCAN payload.
-    pub fn use_store<S>(self, store: S) -> UcanPayload<'a, S>
+    pub fn use_store<T>(self, store: T) -> UcanPayload<'a, T>
     where
-        S: IpldStore,
+        T: IpldStore,
     {
         UcanPayload {
             issuer: self.issuer,
@@ -120,13 +119,13 @@ where
 // Trait Implementations
 //--------------------------------------------------------------------------------------------------
 
-impl<'a, I> Serialize for UcanPayload<'a, I>
+impl<'a, S> Serialize for UcanPayload<'a, S>
 where
-    I: IpldStore,
+    S: IpldStore,
 {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    fn serialize<T>(&self, serializer: T) -> Result<T::Ok, T::Error>
     where
-        S: Serializer,
+        T: Serializer,
     {
         let serde = UcanPayloadSerde {
             ucv: VERSION,
@@ -169,9 +168,9 @@ impl<'a, 'de> Deserialize<'de> for UcanPayload<'a, PlaceholderStore> {
     }
 }
 
-impl<'a, I> Display for UcanPayload<'a, I>
+impl<'a, S> Display for UcanPayload<'a, S>
 where
-    I: IpldStore,
+    S: IpldStore,
 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let json = serde_json::to_string(self).map_err(|_| std::fmt::Error)?;
