@@ -17,7 +17,9 @@ rand_core = "0.6.4"
 serde.workspace = true
 serde_json = "1.0.116"
 sha2 = "0.10.8"
+test-log.workspace = true
 thiserror.workspace = true
+tracing.workspace = true
 x25519-dalek = "2.0.1"
 
 [dev-dependencies]

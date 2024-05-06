@@ -1,6 +1,6 @@
 use zeroutils_key::PubKey;
 
-use crate::{DidResult, DidWebKey, LocatorComponent};
+use crate::{Base, DidResult, DidWebKey, LocatorComponent};
 
 use super::{Host, Path};
 
@@ -9,17 +9,11 @@ use super::{Host, Path};
 //--------------------------------------------------------------------------------------------------
 
 /// A builder for a `DID Web Key`.
-pub struct DidWebKeyBuilder<P = ()> {
-    /// The public key.
+pub struct DidWebKeyBuilder<P = (), B = ()> {
     key: P,
-
-    /// The host part of the component.
+    base: B,
     host: Option<Host>,
-
-    /// The port part of the component.
     port: Option<u16>,
-
-    /// The path part of the component.
     path: Option<Path>,
 }
 
@@ -27,14 +21,26 @@ pub struct DidWebKeyBuilder<P = ()> {
 // Methods
 //--------------------------------------------------------------------------------------------------
 
-impl<'a, K> DidWebKeyBuilder<K> {
+impl<'a, K, B> DidWebKeyBuilder<K, B> {
     /// Sets the public key.
-    pub fn public_key<P>(self, key: PubKey<'a, P>) -> DidWebKeyBuilder<PubKey<'a, P>>
+    pub fn public_key<P>(self, key: PubKey<'a, P>) -> DidWebKeyBuilder<PubKey<'a, P>, B>
     where
         P: Clone,
     {
         DidWebKeyBuilder {
             key,
+            base: self.base,
+            host: self.host,
+            port: self.port,
+            path: self.path,
+        }
+    }
+
+    /// Sets the base encoding to apply on public key.
+    pub fn base(self, base: Base) -> DidWebKeyBuilder<K, Base> {
+        DidWebKeyBuilder {
+            key: self.key,
+            base,
             host: self.host,
             port: self.port,
             path: self.path,
@@ -42,25 +48,25 @@ impl<'a, K> DidWebKeyBuilder<K> {
     }
 
     /// Sets the host part of the component.
-    pub fn host(mut self, host: impl Into<Host>) -> DidWebKeyBuilder<K> {
+    pub fn host(mut self, host: impl Into<Host>) -> DidWebKeyBuilder<K, B> {
         self.host = Some(host.into());
         self
     }
 
     /// Sets the port part of the component.
-    pub fn port(mut self, port: u16) -> DidWebKeyBuilder<K> {
+    pub fn port(mut self, port: u16) -> DidWebKeyBuilder<K, B> {
         self.port = Some(port);
         self
     }
 
     /// Sets the path part of the component.
-    pub fn path(mut self, path: impl Into<Path>) -> DidWebKeyBuilder<K> {
+    pub fn path(mut self, path: impl Into<Path>) -> DidWebKeyBuilder<K, B> {
         self.path = Some(path.into());
         self
     }
 }
 
-impl<'a, P> DidWebKeyBuilder<PubKey<'a, P>>
+impl<'a, P> DidWebKeyBuilder<PubKey<'a, P>, Base>
 where
     P: Clone,
 {
@@ -68,6 +74,7 @@ where
     pub fn build(self) -> DidResult<DidWebKey<PubKey<'a, P>>> {
         Ok(DidWebKey {
             public_key: self.key,
+            base: self.base,
             locator_component: self
                 .host
                 .map(|host| LocatorComponent::new(host, self.port, self.path)),
@@ -83,6 +90,7 @@ impl Default for DidWebKeyBuilder {
     fn default() -> Self {
         DidWebKeyBuilder {
             key: (),
+            base: (),
             host: None,
             port: None,
             path: None,
@@ -107,6 +115,7 @@ mod tests {
 
         let did_web_key = DidWebKeyBuilder::default()
             .public_key(public_key.clone())
+            .base(Base::Base58Btc)
             .host("example.com")
             .port(8080)
             .path("/path")
@@ -114,7 +123,7 @@ mod tests {
 
         assert_eq!(did_web_key.public_key, public_key);
         assert_eq!(
-            did_web_key.locator_component.unwrap().encode(),
+            did_web_key.locator_component.unwrap().to_string(),
             "example.com:8080/path"
         );
 

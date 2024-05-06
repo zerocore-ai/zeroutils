@@ -5,11 +5,12 @@ use std::{
 
 use libsecp256k1::{Message, PublicKey, SecretKey, Signature};
 use rand_core::CryptoRngCore;
+use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
 use crate::{
-    AsymmetricKey, KeyPairBytes, KeyPairGenerate, KeyResult, PubKey, PublicKeyBytes,
-    PublicKeyGenerate, Sign, Verify,
+    AsymmetricKey, JwsAlgName, JwsAlgorithm, KeyPairBytes, KeyPairGenerate, KeyResult, PubKey,
+    PublicKeyBytes, PublicKeyGenerate, Sign, Verify,
 };
 
 //--------------------------------------------------------------------------------------------------
@@ -121,6 +122,31 @@ impl Hash for Secp256k1PubKey<'_> {
     }
 }
 
+impl Serialize for Secp256k1PubKey<'_> {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        self.public_key_bytes().serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for Secp256k1PubKey<'_> {
+    fn deserialize<D>(deserializer: D) -> Result<Secp256k1PubKey<'static>, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let bytes = Vec::<u8>::deserialize(deserializer)?;
+        Secp256k1PubKey::from_public_key(&bytes).map_err(serde::de::Error::custom)
+    }
+}
+
+impl<S> JwsAlgName for Secp256k1Key<'_, S> {
+    fn alg(&self) -> JwsAlgorithm {
+        JwsAlgorithm::ES256K
+    }
+}
+
 //--------------------------------------------------------------------------------------------------
 // Tests
 //--------------------------------------------------------------------------------------------------
@@ -132,7 +158,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_secp256k1_generate_and_serialize_roundtrip() -> anyhow::Result<()> {
+    fn test_secp256k1_generate() -> anyhow::Result<()> {
         let mut rng = rand::thread_rng();
         let key_pair = Secp256k1KeyPair::generate(&mut rng)?;
 
@@ -158,6 +184,19 @@ mod tests {
         let signature = key_pair.sign(data)?;
 
         key_pair.verify(data, &signature)?;
+
+        Ok(())
+    }
+
+    #[test_log::test]
+    fn test_secp256k1_pub_key_serde() -> anyhow::Result<()> {
+        let mut rng = rand::thread_rng();
+        let pub_key = Secp256k1PubKey::from(Secp256k1KeyPair::generate(&mut rng)?);
+
+        let serialized = serde_json::to_string(&pub_key)?;
+        tracing::debug!(?serialized);
+        let deserialized = serde_json::from_str(&serialized)?;
+        assert_eq!(pub_key, deserialized);
 
         Ok(())
     }

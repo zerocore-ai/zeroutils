@@ -9,16 +9,16 @@ use thiserror::Error;
 /// A type alias for a `Result` that uses `DidError` as the error type.
 pub type DidResult<T> = Result<T, DidError>;
 
-/// The main error type of the zeroengine crate.
+/// The main error type.
 #[derive(Debug, Error)]
 pub enum DidError {
     /// Invalid method.
     #[error("Expected the `did:wk` method.")]
     InvalidMethod,
 
-    /// Invalid key.
-    #[error("Expected an encoded key: {0}")]
-    InvalidKey(String),
+    /// Unsupported key type.
+    #[error("Unsupported key type: {0}")]
+    UnsupportedKeyType(String),
 
     /// Invalid host.
     #[error("Expected a valid host domain, ipv4 or ipv6 address: {0}")]

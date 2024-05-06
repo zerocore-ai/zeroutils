@@ -11,7 +11,7 @@ use thiserror::Error;
 /// A type alias for a `Result` that uses `KeyError` as the error type.
 pub type KeyResult<T> = Result<T, KeyError>;
 
-/// The main error type of the zeroengine crate.
+/// The main error type.
 #[derive(Debug, Error)]
 pub enum KeyError {
     /// `ed25519` error.
@@ -21,6 +21,10 @@ pub enum KeyError {
     /// `secp256k1` error.
     #[error("secp256k1 error: {0}")]
     Secp256k1Error(#[from] libsecp256k1::Error),
+
+    /// Unsupported JWS algorithm name.
+    #[error("Unsupported JWS algorithm name: {0}")]
+    UnsupportedJwsAlgName(String),
 
     /// Custom error.
     #[error("Custom error: {0}")]

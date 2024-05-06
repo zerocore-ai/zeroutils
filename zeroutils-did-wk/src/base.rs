@@ -1,13 +1,15 @@
+use serde::{Deserialize, Serialize};
+
+use super::DidResult;
+
 //--------------------------------------------------------------------------------------------------
 // Types
 //--------------------------------------------------------------------------------------------------
 
-use super::DidResult;
-
 /// Supported base encodings.
 ///
 /// This is a convenience enum that maps to the [`multibase::Base`] enum.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Hash, PartialOrd, Ord)]
 pub enum Base {
     /// 8-bit binary (encoder and decoder keeps data unmodified).
     Identity,

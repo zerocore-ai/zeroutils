@@ -7,6 +7,7 @@
 
 mod ed25519;
 mod error;
+mod jws;
 mod key;
 mod p256;
 mod secp256k1;
@@ -19,6 +20,7 @@ mod x25519;
 
 pub use ed25519::*;
 pub use error::*;
+pub use jws::*;
 pub use key::*;
 pub use p256::*;
 pub use secp256k1::*;

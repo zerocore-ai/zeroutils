@@ -40,7 +40,7 @@ pub trait KeyDecode {
     ///
     /// [multicodec]: https://github.com/multiformats/multicodec
     /// [multibase]: https://github.com/multiformats/multibase
-    fn decode(encoded: impl AsRef<str>) -> Result<Self, Self::Error>
+    fn decode(encoded: impl AsRef<str>) -> Result<(Self, Base), Self::Error>
     where
         Self: Sized;
 }
@@ -101,45 +101,45 @@ impl KeyEncode for Secp256k1PubKey<'_> {
 impl KeyDecode for Ed25519PubKey<'_> {
     type Error = DidError;
 
-    fn decode(encoded: impl AsRef<str>) -> Result<Self, Self::Error> {
-        let (_, multicodec_enc) = Base::decode(encoded)?;
+    fn decode(encoded: impl AsRef<str>) -> Result<(Self, Base), Self::Error> {
+        let (base, multicodec_enc) = Base::decode(encoded)?;
 
         let pk_bytes = match &multicodec_enc[0..2] {
             [0xED, 0x01] => &multicodec_enc[2..],
             _ => return Err(DidError::ExpectedKeyType("ed25519".to_string())),
         };
 
-        Ok(Ed25519PubKey::from_public_key(pk_bytes)?)
+        Ok((Ed25519PubKey::from_public_key(pk_bytes)?, base))
     }
 }
 
 impl KeyDecode for P256PubKey<'_> {
     type Error = DidError;
 
-    fn decode(encoded: impl AsRef<str>) -> Result<Self, Self::Error> {
-        let (_, multicodec_enc) = Base::decode(encoded)?;
+    fn decode(encoded: impl AsRef<str>) -> Result<(Self, Base), Self::Error> {
+        let (base, multicodec_enc) = Base::decode(encoded)?;
 
         let pk_bytes = match &multicodec_enc[0..2] {
             [0x80, 0x1A] => &multicodec_enc[2..],
             _ => return Err(DidError::ExpectedKeyType("p256".to_string())),
         };
 
-        Ok(P256PubKey::from_public_key(pk_bytes)?)
+        Ok((P256PubKey::from_public_key(pk_bytes)?, base))
     }
 }
 
 impl KeyDecode for Secp256k1PubKey<'_> {
     type Error = DidError;
 
-    fn decode(encoded: impl AsRef<str>) -> Result<Self, Self::Error> {
-        let (_, multicodec_enc) = Base::decode(encoded)?;
+    fn decode(encoded: impl AsRef<str>) -> Result<(Self, Base), Self::Error> {
+        let (base, multicodec_enc) = Base::decode(encoded)?;
 
         let pk_bytes = match &multicodec_enc[0..2] {
             [0xE7, 0x01] => &multicodec_enc[2..],
             _ => return Err(DidError::ExpectedKeyType("secp256k1".to_string())),
         };
 
-        Ok(Secp256k1PubKey::from_public_key(pk_bytes)?)
+        Ok((Secp256k1PubKey::from_public_key(pk_bytes)?, base))
     }
 }
 
@@ -161,9 +161,10 @@ mod tests {
         let pub_key = Ed25519PubKey::from(Ed25519KeyPair::generate(&mut rng)?);
 
         let encoded = pub_key.encode(Base::Base58Btc);
-        let decoded = Ed25519PubKey::decode(encoded)?;
+        let (decoded, base) = Ed25519PubKey::decode(encoded)?;
 
         assert_eq!(pub_key, decoded);
+        assert_eq!(base, Base::Base58Btc);
 
         Ok(())
     }
@@ -173,10 +174,11 @@ mod tests {
         let mut rng = rand::thread_rng();
         let pub_key = P256PubKey::from(P256KeyPair::generate(&mut rng)?);
 
-        let encoded = pub_key.encode(Base::Base58Btc);
-        let decoded = P256PubKey::decode(encoded)?;
+        let encoded = pub_key.encode(Base::Base64);
+        let (decoded, base) = P256PubKey::decode(encoded)?;
 
         assert_eq!(pub_key, decoded);
+        assert_eq!(base, Base::Base64);
 
         Ok(())
     }
@@ -186,10 +188,11 @@ mod tests {
         let mut rng = rand::thread_rng();
         let pub_key = Secp256k1PubKey::from(Secp256k1KeyPair::generate(&mut rng)?);
 
-        let encoded = pub_key.encode(Base::Base58Btc);
-        let decoded = Secp256k1PubKey::decode(encoded)?;
+        let encoded = pub_key.encode(Base::Base32Z);
+        let (decoded, base) = Secp256k1PubKey::decode(encoded)?;
 
         assert_eq!(pub_key, decoded);
+        assert_eq!(base, Base::Base32Z);
 
         Ok(())
     }

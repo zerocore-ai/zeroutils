@@ -24,7 +24,7 @@
   </p> -->
 </div>
 
-**`zeroutils`** is a collection of utilities used across the zerocore project.
+**`zeroutils`** is a collection of projects used across the zerocore project.
 
 </br>
 
@@ -48,3 +48,4 @@ This project is licensed under the [Apache License 2.0](./LICENSE), or
 [http://www.apache.org/licenses/LICENSE-2.0][apache].
 
 [apache]: https://www.apache.org/licenses/LICENSE-2.0
+[wasmtime]: https://github.com/bytecodealliance/wasmtime

@@ -1,6 +1,6 @@
 use rand_core::CryptoRngCore;
 
-use crate::KeyResult;
+use crate::{JwsAlgorithm, KeyResult};
 
 //--------------------------------------------------------------------------------------------------
 // Traits
@@ -70,4 +70,10 @@ pub trait DiffieHellmanExchange {
     /// Executes a key exchange operation using the provided public key of
     /// another party.
     fn exchange(&self, public_key: &[u8]) -> KeyResult<Self::SessionKey>;
+}
+
+/// A trait for getting the algorithm name of a JWS key.
+pub trait JwsAlgName {
+    /// Returns the algorithm name of a JWS key.
+    fn alg(&self) -> JwsAlgorithm;
 }

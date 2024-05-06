@@ -120,6 +120,7 @@ impl IpldStore for MemoryIpldStore {
     }
 
     async fn get_references(&self, cid: impl Into<Cid>) -> StoreResult<HashSet<Cid>> {
+        // TODO: Should figure out how to get references without deserializing the block. Think UCAN proof links.
         let cid = cid.into();
         let blocks = self.blocks.read().await;
         match blocks.get(&cid) {

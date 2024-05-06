@@ -1,5 +1,7 @@
 use std::{fmt::Display, net::Ipv4Addr, str::FromStr};
 
+use serde::{Deserialize, Serialize};
+
 use super::{DidError, RE_IPLITERAL, RE_IPV4ADDR, RE_PATH_ABEMPTY, RE_REGNAME};
 
 //--------------------------------------------------------------------------------------------------
@@ -16,15 +18,17 @@ use super::{DidError, RE_IPLITERAL, RE_IPV4ADDR, RE_PATH_ABEMPTY, RE_REGNAME};
 /// To get the DID document, this would get resolved to:
 ///
 /// `https://steve.zerocore.ai/public/.well-known/did.json`.
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct LocatorComponent {
     /// The host part of the component.
     host: Host,
 
     /// The port part of the component.
+    #[serde(skip_serializing_if = "Option::is_none")]
     port: Option<u16>,
 
     /// The path part of the component.
+    #[serde(skip_serializing_if = "Option::is_none")]
     path: Option<Path>,
 }
 
@@ -53,7 +57,7 @@ pub enum Host {
 /// NOTE: Path can be an empty string.
 ///
 /// [ref]: https://datatracker.ietf.org/doc/html/rfc3986#section-3.3
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct Path(String);
 
 //--------------------------------------------------------------------------------------------------
@@ -83,27 +87,6 @@ impl LocatorComponent {
     /// Returns the path part of the component.
     pub fn path(&self) -> Option<&Path> {
         self.path.as_ref()
-    }
-
-    /// Encodes the locator component into a string.
-    pub fn encode(&self) -> String {
-        let mut locator = String::new();
-
-        match &self.host {
-            Host::Domain(domain) => locator.push_str(domain),
-            Host::IpV4Addr(ipv4) => locator.push_str(&ipv4.to_string()),
-            Host::IpLiteral(ipv6) => locator.push_str(ipv6),
-        }
-
-        if let Some(port) = self.port {
-            locator.push_str(&format!(":{}", port));
-        }
-
-        if let Some(path) = &self.path {
-            locator.push_str(&path.0);
-        }
-
-        locator
     }
 }
 
@@ -159,7 +142,23 @@ impl From<&str> for Path {
 
 impl Display for LocatorComponent {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.encode())
+        let mut locator = String::new();
+
+        match &self.host {
+            Host::Domain(domain) => locator.push_str(domain),
+            Host::IpV4Addr(ipv4) => locator.push_str(&ipv4.to_string()),
+            Host::IpLiteral(ipv6) => locator.push_str(ipv6),
+        }
+
+        if let Some(port) = self.port {
+            locator.push_str(&format!(":{}", port));
+        }
+
+        if let Some(path) = &self.path {
+            locator.push_str(&path.0);
+        }
+
+        write!(f, "{}", locator)
     }
 }
 
@@ -202,6 +201,29 @@ impl FromStr for LocatorComponent {
         };
 
         Ok(LocatorComponent::new(host, port, path))
+    }
+}
+
+impl Serialize for Host {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        match self {
+            Host::Domain(domain) => serializer.serialize_str(domain),
+            Host::IpV4Addr(ipv4) => serializer.serialize_str(&ipv4.to_string()),
+            Host::IpLiteral(ipv6) => serializer.serialize_str(ipv6),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for Host {
+    fn deserialize<D>(deserializer: D) -> Result<Host, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let s = String::deserialize(deserializer)?;
+        s.parse().map_err(serde::de::Error::custom)
     }
 }
 
@@ -257,7 +279,6 @@ mod tests {
     #[test]
     fn test_locator_display() {
         let locator = LocatorComponent::new("steve.zerocore.ai", Some(443), Some("/public".into()));
-
         assert_eq!(locator.to_string(), "steve.zerocore.ai:443/public");
     }
 
@@ -288,18 +309,34 @@ mod tests {
         Ok(())
     }
 
-    #[test]
-    fn test_locator_encode() -> anyhow::Result<()> {
+    #[test_log::test]
+    fn test_locator_serde() -> anyhow::Result<()> {
         let locator = LocatorComponent::new("steve.zerocore.ai", Some(443), Some("/public".into()));
         let locator_no_port =
             LocatorComponent::new("steve.zerocore.ai", None, Some("/public".into()));
         let locator_no_path = LocatorComponent::new("192.168.123.132", Some(443), None);
         let locator_no_port_or_path = LocatorComponent::new("steve.zerocore.ai", None, None);
 
-        assert_eq!(locator.encode(), "steve.zerocore.ai:443/public");
-        assert_eq!(locator_no_port.encode(), "steve.zerocore.ai/public");
-        assert_eq!(locator_no_path.encode(), "192.168.123.132:443");
-        assert_eq!(locator_no_port_or_path.encode(), "steve.zerocore.ai");
+        let encoded = serde_json::to_string(&locator)?;
+        tracing::debug!(?encoded);
+        let decoded: LocatorComponent = serde_json::from_str(&encoded)?;
+        assert_eq!(locator, decoded);
+
+        let encoded_no_port = serde_json::to_string(&locator_no_port)?;
+        tracing::debug!(?encoded_no_port);
+        let decoded_no_port: LocatorComponent = serde_json::from_str(&encoded_no_port)?;
+        assert_eq!(locator_no_port, decoded_no_port);
+
+        let encoded_no_path = serde_json::to_string(&locator_no_path)?;
+        tracing::debug!(?encoded_no_path);
+        let decoded_no_path: LocatorComponent = serde_json::from_str(&encoded_no_path)?;
+        assert_eq!(locator_no_path, decoded_no_path);
+
+        let encoded_no_port_or_path = serde_json::to_string(&locator_no_port_or_path)?;
+        tracing::debug!(?encoded_no_port_or_path);
+        let decoded_no_port_or_path: LocatorComponent =
+            serde_json::from_str(&encoded_no_port_or_path)?;
+        assert_eq!(locator_no_port_or_path, decoded_no_port_or_path);
 
         Ok(())
     }
