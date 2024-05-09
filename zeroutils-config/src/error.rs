@@ -1,6 +1,4 @@
-//! Error types of the zeroraft crate.
-
-use std::{any::TypeId, error::Error, fmt::Display};
+use std::{error::Error, fmt::Display};
 
 use thiserror::Error;
 
@@ -8,27 +6,23 @@ use thiserror::Error;
 // Types
 //--------------------------------------------------------------------------------------------------
 
-/// A type alias for a `Result` that uses `KeyError` as the error type.
-pub type KeyResult<T> = Result<T, KeyError>;
+/// A type alias for a `Result` that uses `ConfigError` as the error type.
+pub type ConfigResult<T> = Result<T, ConfigError>;
 
 /// The main error type.
 #[derive(Debug, Error)]
-pub enum KeyError {
-    /// `ed25519` error.
-    #[error("ed25519 error: {0}")]
-    ED25519Error(#[from] ed25519_dalek::SignatureError),
+pub enum ConfigError {
+    /// `peer port` and `user port` cannot be the same.
+    #[error("Peer and user ports cannot be the same: {0}")]
+    EqualPeerUserPorts(u16),
 
-    /// `secp256k1` error.
-    #[error("secp256k1 error: {0}")]
-    Secp256k1Error(#[from] libsecp256k1::Error),
+    /// Io error.
+    #[error("Io error: {0}")]
+    IoError(#[from] std::io::Error),
 
-    /// Unsupported JWS algorithm name.
-    #[error("Unsupported JWS algorithm name: {0}")]
-    UnsupportedJwsAlgName(String),
-
-    /// Casting failed.
-    #[error("Casting failed for type: {0:?}")]
-    CastingFailed(TypeId),
+    /// Toml deserialization error.
+    #[error("Toml deserialization error: {0}")]
+    TomlError(#[from] toml::de::Error),
 
     /// Custom error.
     #[error("Custom error: {0}")]
@@ -45,10 +39,10 @@ pub struct AnyError {
 // Methods
 //--------------------------------------------------------------------------------------------------
 
-impl KeyError {
+impl ConfigError {
     /// Creates a new `Err` result.
-    pub fn custom(error: impl Into<anyhow::Error>) -> KeyError {
-        KeyError::Custom(AnyError {
+    pub fn custom(error: impl Into<anyhow::Error>) -> ConfigError {
+        ConfigError::Custom(AnyError {
             error: error.into(),
         })
     }
@@ -58,9 +52,9 @@ impl KeyError {
 // Functions
 //--------------------------------------------------------------------------------------------------
 
-/// Creates an `Ok` `KeyResult`.
+/// Creates an `Ok` `DidResult`.
 #[allow(non_snake_case)]
-pub fn Ok<T>(value: T) -> KeyResult<T> {
+pub fn Ok<T>(value: T) -> ConfigResult<T> {
     Result::Ok(value)
 }
 

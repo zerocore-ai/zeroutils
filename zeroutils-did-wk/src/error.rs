@@ -1,5 +1,7 @@
 //! Error types of the zeroraft crate.
 
+use std::any::TypeId;
+
 use thiserror::Error;
 
 //--------------------------------------------------------------------------------------------------
@@ -47,6 +49,10 @@ pub enum DidError {
     /// Base encoding or decoding error.
     #[error("Base encoding or decoding error: {0}")]
     BaseError(#[from] multibase::Error),
+
+    /// Casting failed.
+    #[error("Casting failed for type: {0:?}")]
+    CastingFailed(TypeId),
 }
 
 //--------------------------------------------------------------------------------------------------

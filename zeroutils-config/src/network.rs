@@ -8,7 +8,10 @@ use std::{
 
 use serde::{Deserialize, Serialize};
 use structstruck::strike;
-use zeroutils_did_wk::DidWebKeyType;
+use typed_builder::TypedBuilder;
+use zeroutils_did_wk::WrappedDidWebKey;
+
+use crate::{ConfigError, ConfigResult};
 
 use super::default::{DEFAULT_ELECTION_TIMEOUT_RANGE, DEFAULT_HEARTBEAT_INTERVAL};
 
@@ -30,61 +33,113 @@ pub trait PortDefaults {
 //--------------------------------------------------------------------------------------------------
 
 strike! {
-    /// The configuration for the `Zerodb` instance.
-    #[strikethrough[derive(Debug, Deserialize, Serialize)]]
+    #[strikethrough[derive(Debug, Deserialize, Serialize, TypedBuilder)]]
     /// The network configuration for cluster communication.
     pub struct NetworkConfig<'a, D: PortDefaults> {
         #[serde(skip)]
-        defaults: PhantomData<D>,
+        #[builder(default, setter(skip))]
+        d: PhantomData<D>,
 
         /// The id of the node.
-        #[serde()]
-        pub id: DidWebKeyType<'a>,
+        #[serde(default = "super::default::default_id")]
+        #[builder(default = super::default::default_id())]
+        pub id: WrappedDidWebKey<'a>,
 
         /// Name of the node.
         #[serde(default)]
+        #[builder(default)]
         pub name: String,
 
         /// The host to listen on.
-        #[serde(default = "super::default::serde::default_host")]
+        #[serde(default = "super::default::default_host")]
+        #[builder(default = super::default::default_host())]
         pub host: IpAddr,
 
         /// The port to listen on for peers.
         #[serde(default = "D::default_peer_port")]
+        #[builder(default = D::default_peer_port())]
         pub peer_port: u16,
 
         /// The port to listen on for users.
         #[serde(default = "D::default_user_port")]
+        #[builder(default = D::default_user_port())]
         pub user_port: u16,
 
         /// The peers to connect to.
         #[serde(default)]
-        pub seeds: HashMap<DidWebKeyType<'a>, SocketAddr>,
+        #[builder(default)]
+        pub seeds: HashMap<WrappedDidWebKey<'a>, SocketAddr>,
 
         // /// A passive node does not partake in consensus.
-        // #[builder(default)]
         // #[serde(default)]
+        // #[builder(default)]
         // pub passive: bool,
 
         /// The consensus configuration.
         #[serde(default)]
+        #[builder(default)]
         pub consensus:
             /// The consensus configuration.
             pub struct ConsensusConfig {
                 /// The interval at which heartbeats are sent.
-                #[serde(default = "super::default::serde::default_heartbeat_interval")]
+                #[serde(default = "super::default::default_heartbeat_interval")]
+                #[builder(default = super::default::default_heartbeat_interval())]
                 pub heartbeat_interval: u64,
 
                 /// The range of election timeouts.
-                #[serde(default = "super::default::serde::default_election_timeout_range")]
+                #[serde(default = "super::default::default_election_timeout_range")]
+                #[builder(default = super::default::default_election_timeout_range())]
                 pub election_timeout_range: (u64, u64),
             }
     }
 }
 
 //--------------------------------------------------------------------------------------------------
+// Methods
+//--------------------------------------------------------------------------------------------------
+
+impl<D> NetworkConfig<'_, D>
+where
+    D: PortDefaults,
+{
+    /// Validates the configuration.
+    pub fn validate(&self) -> ConfigResult<()> {
+        if self.peer_port == self.user_port {
+            return Err(ConfigError::EqualPeerUserPorts(self.peer_port));
+        }
+
+        Ok(())
+    }
+
+    /// Gets the peer address.
+    pub fn get_peer_address(&self) -> SocketAddr {
+        SocketAddr::new(self.host, self.peer_port)
+    }
+
+    /// Gets the user address.
+    pub fn get_client_address(&self) -> SocketAddr {
+        SocketAddr::new(self.host, self.user_port)
+    }
+}
+
+//--------------------------------------------------------------------------------------------------
 // Trait Implementations
 //--------------------------------------------------------------------------------------------------
+
+impl<'a, D: PortDefaults> Default for NetworkConfig<'a, D> {
+    fn default() -> Self {
+        Self {
+            d: PhantomData,
+            id: super::default::default_id(),
+            name: Default::default(),
+            host: super::default::default_host(),
+            peer_port: D::default_peer_port(),
+            user_port: D::default_user_port(),
+            seeds: Default::default(),
+            consensus: Default::default(),
+        }
+    }
+}
 
 impl Default for ConsensusConfig {
     fn default() -> Self {
@@ -101,15 +156,24 @@ impl Default for ConsensusConfig {
 
 #[cfg(test)]
 mod tests {
-    use crate::network::tests::fixtures::MockPortDefaults;
+    use crate::network::tests::fixture::MockPortDefaults;
 
     use super::*;
     use std::{net::Ipv4Addr, str::FromStr};
 
-    mod fixtures {
+    mod fixture {
         use super::*;
 
+        //--------------------------------------------------------------------------------------------------
+        // Types
+        //--------------------------------------------------------------------------------------------------
+
         pub struct MockPortDefaults;
+
+        //--------------------------------------------------------------------------------------------------
+        // Methods
+        //--------------------------------------------------------------------------------------------------
+
         impl PortDefaults for MockPortDefaults {
             fn default_peer_port() -> u16 {
                 7700
@@ -143,7 +207,7 @@ mod tests {
 
         assert_eq!(
             config.id,
-            DidWebKeyType::from_str("did:wk:z6MkoVs2h6TnfyY8fx2ZqpREWSLS8rBDQmGpyXgFpg63CSUb")?
+            WrappedDidWebKey::from_str("did:wk:z6MkoVs2h6TnfyY8fx2ZqpREWSLS8rBDQmGpyXgFpg63CSUb")?
         );
         assert_eq!(config.host, IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)));
         assert_eq!(config.peer_port, 7700);
@@ -151,11 +215,15 @@ mod tests {
         assert_eq!(config.seeds, {
             let mut peers = HashMap::new();
             peers.insert(
-                DidWebKeyType::from_str("did:wk:m7QFAoSJPFzmaqQiTkLrWQ6pbYrmI6L07Fkdg8SCRpjP1Ig")?,
+                WrappedDidWebKey::from_str(
+                    "did:wk:m7QFAoSJPFzmaqQiTkLrWQ6pbYrmI6L07Fkdg8SCRpjP1Ig",
+                )?,
                 SocketAddr::new(Ipv4Addr::new(127, 0, 0, 1).into(), 7800),
             );
             peers.insert(
-                DidWebKeyType::from_str("did:wk:z6MknLif7jhwt6jUfn14EuDnxWoSHkkajyDi28QMMH5eS1DL")?,
+                WrappedDidWebKey::from_str(
+                    "did:wk:z6MknLif7jhwt6jUfn14EuDnxWoSHkkajyDi28QMMH5eS1DL",
+                )?,
                 SocketAddr::new(Ipv4Addr::new(127, 0, 0, 1).into(), 7900),
             );
             peers
@@ -168,16 +236,8 @@ mod tests {
 
     #[test]
     fn test_toml_defaults() -> anyhow::Result<()> {
-        let toml = r#"
-        id = "did:wk:z6MkoVs2h6TnfyY8fx2ZqpREWSLS8rBDQmGpyXgFpg63CSUb"
-        "#;
+        let config: NetworkConfig<MockPortDefaults> = toml::from_str("")?;
 
-        let config: NetworkConfig<MockPortDefaults> = toml::from_str(toml)?;
-
-        assert_eq!(
-            config.id,
-            DidWebKeyType::from_str("did:wk:z6MkoVs2h6TnfyY8fx2ZqpREWSLS8rBDQmGpyXgFpg63CSUb")?
-        );
         assert_eq!(config.host, IpAddr::V4(Ipv4Addr::LOCALHOST));
         assert_eq!(config.peer_port, 7700);
         assert_eq!(config.user_port, 7711);

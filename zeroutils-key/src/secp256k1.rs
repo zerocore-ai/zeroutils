@@ -9,8 +9,9 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
 use crate::{
-    AsymmetricKey, JwsAlgName, JwsAlgorithm, KeyPairBytes, KeyPairGenerate, KeyResult, PubKey,
-    PublicKeyBytes, PublicKeyGenerate, Sign, Verify,
+    AsymmetricKey, GetPublicKey, JwsAlgName, JwsAlgorithm, KeyPairBytes, KeyPairGenerate,
+    KeyResult, PubKey, PublicKeyBytes, PublicKeyGenerate, Sign, Verify, WrappedKeyPair,
+    WrappedPubKey,
 };
 
 //--------------------------------------------------------------------------------------------------
@@ -65,9 +66,7 @@ impl PublicKeyGenerate for Secp256k1PubKey<'_> {
     }
 }
 
-impl<'a> KeyPairGenerate<'a> for Secp256k1KeyPair<'a> {
-    type PublicKey = Secp256k1PubKey<'a>;
-
+impl KeyPairGenerate for Secp256k1KeyPair<'_> {
     fn generate(rng: &mut impl CryptoRngCore) -> KeyResult<Self> {
         let private_key = SecretKey::random(rng);
         let public_key = PublicKey::from_secret_key(&private_key);
@@ -85,9 +84,14 @@ impl<'a> KeyPairGenerate<'a> for Secp256k1KeyPair<'a> {
             private: private_key,
         })
     }
+}
 
-    fn get_public_key(&'a self) -> Self::PublicKey {
-        self.into()
+impl<'a, S> GetPublicKey for Secp256k1Key<'a, S> {
+    type OwnedPublicKey = Secp256k1PubKey<'static>;
+    type PublicKey<'b> = Secp256k1PubKey<'b> where 'a: 'b, S: 'b;
+
+    fn public_key(&self) -> Self::PublicKey<'_> {
+        Secp256k1PubKey::from(self)
     }
 }
 
@@ -153,6 +157,18 @@ impl<S> JwsAlgName for Secp256k1Key<'_, S> {
     }
 }
 
+impl<'a> From<Secp256k1PubKey<'a>> for WrappedPubKey<'a> {
+    fn from(pub_key: Secp256k1PubKey<'a>) -> Self {
+        WrappedPubKey::Secp256k1(pub_key)
+    }
+}
+
+impl<'a> From<Secp256k1KeyPair<'a>> for WrappedKeyPair<'a> {
+    fn from(key_pair: Secp256k1KeyPair<'a>) -> Self {
+        WrappedKeyPair::Secp256k1(key_pair)
+    }
+}
+
 //--------------------------------------------------------------------------------------------------
 // Tests
 //--------------------------------------------------------------------------------------------------
@@ -160,6 +176,8 @@ impl<S> JwsAlgName for Secp256k1Key<'_, S> {
 #[cfg(test)]
 mod tests {
     use anyhow::Ok;
+
+    use crate::IntoOwned;
 
     use super::*;
 
@@ -178,7 +196,7 @@ mod tests {
 
         assert_eq!(key_pair, key_pair2);
 
-        let public_key2 = key_pair2.get_public_key();
+        let public_key2 = key_pair2.public_key();
 
         assert_eq!(public_key, public_key2);
 
@@ -207,6 +225,24 @@ mod tests {
         tracing::debug!(?serialized);
         let deserialized = serde_json::from_str(&serialized)?;
         assert_eq!(pub_key, deserialized);
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_secp256k1_wrap_into_inner() -> anyhow::Result<()> {
+        let mut rng = rand::thread_rng();
+        let key_pair = Secp256k1KeyPair::generate(&mut rng)?;
+
+        let keypair_wrapped = WrappedKeyPair::from(key_pair.clone());
+        let keypair_unwrapped = keypair_wrapped.into_inner()?;
+        assert_eq!(key_pair, keypair_unwrapped);
+
+        let public_key = key_pair.public_key().into_owned();
+        let wrapped_pub_key = WrappedPubKey::from(public_key.clone());
+        let unwrapped_pub_key = wrapped_pub_key.into_inner::<Secp256k1PubKey>()?;
+
+        assert_eq!(public_key, unwrapped_pub_key);
 
         Ok(())
     }

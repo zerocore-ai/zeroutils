@@ -36,10 +36,7 @@ pub trait PublicKeyGenerate {
 }
 
 /// A trait for constructing a key pair.
-pub trait KeyPairGenerate<'a> {
-    /// The type of the public key.
-    type PublicKey;
-
+pub trait KeyPairGenerate {
     /// Generates a key pair from a cryptographically secure random number generator.
     fn generate(rng: &mut impl CryptoRngCore) -> KeyResult<Self>
     where
@@ -49,9 +46,29 @@ pub trait KeyPairGenerate<'a> {
     fn from_private_key(bytes: &[u8]) -> KeyResult<Self>
     where
         Self: Sized;
+}
+
+/// A trait for getting the public key of a key pair.
+pub trait GetPublicKey {
+    /// The type of the owned public key.
+    type OwnedPublicKey: PublicKeyBytes + Verify + 'static;
+
+    /// The type of the public key.
+    type PublicKey<'b>: IntoOwned<Owned = Self::OwnedPublicKey> + PublicKeyBytes + Verify
+    where
+        Self: 'b;
 
     /// Returns the public key.
-    fn get_public_key(&'a self) -> Self::PublicKey;
+    fn public_key(&self) -> Self::PublicKey<'_>;
+}
+
+/// A trait for converting a type into an owned type.
+pub trait IntoOwned {
+    /// The type that is owned.
+    type Owned: 'static;
+
+    /// Converts the type into an owned type.
+    fn into_owned(self) -> Self::Owned;
 }
 
 /// A trait for getting the public key bytes.

@@ -9,7 +9,7 @@ use crate::KeyError;
 //--------------------------------------------------------------------------------------------------
 
 /// JSON Web Signature (JWS) algorithm.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Copy, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub enum JwsAlgorithm {
     /// EdDSA algorithm.
     #[serde(rename = "EdDSA")]

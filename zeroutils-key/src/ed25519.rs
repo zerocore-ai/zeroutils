@@ -8,8 +8,9 @@ use rand_core::CryptoRngCore;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    AsymmetricKey, JwsAlgName, JwsAlgorithm, KeyPairBytes, KeyPairGenerate, KeyResult, PubKey,
-    PublicKeyBytes, PublicKeyGenerate, Sign, Verify,
+    AsymmetricKey, GetPublicKey, JwsAlgName, JwsAlgorithm, KeyPairBytes, KeyPairGenerate,
+    KeyResult, PubKey, PublicKeyBytes, PublicKeyGenerate, Sign, Verify, WrappedKeyPair,
+    WrappedPubKey,
 };
 
 //--------------------------------------------------------------------------------------------------
@@ -56,9 +57,7 @@ impl PublicKeyGenerate for Ed25519PubKey<'_> {
     }
 }
 
-impl<'a> KeyPairGenerate<'a> for Ed25519KeyPair<'a> {
-    type PublicKey = Ed25519PubKey<'a>;
-
+impl KeyPairGenerate for Ed25519KeyPair<'_> {
     fn generate(rng: &mut impl CryptoRngCore) -> KeyResult<Self> {
         let signing_key = SigningKey::generate(rng);
         Ok(Self {
@@ -74,9 +73,14 @@ impl<'a> KeyPairGenerate<'a> for Ed25519KeyPair<'a> {
             private: signing_key,
         })
     }
+}
 
-    fn get_public_key(&'a self) -> Self::PublicKey {
-        self.into()
+impl<'a, S> GetPublicKey for Ed25519Key<'a, S> {
+    type OwnedPublicKey = Ed25519PubKey<'static>;
+    type PublicKey<'b> = Ed25519PubKey<'b> where 'a: 'b, S: 'b;
+
+    fn public_key(&self) -> Self::PublicKey<'_> {
+        Ed25519PubKey::from(self)
     }
 }
 
@@ -141,6 +145,18 @@ impl<S> JwsAlgName for Ed25519Key<'_, S> {
     }
 }
 
+impl<'a> From<Ed25519PubKey<'a>> for WrappedPubKey<'a> {
+    fn from(pub_key: Ed25519PubKey<'a>) -> Self {
+        WrappedPubKey::Ed25519(pub_key)
+    }
+}
+
+impl<'a> From<Ed25519KeyPair<'a>> for WrappedKeyPair<'a> {
+    fn from(key_pair: Ed25519KeyPair<'a>) -> Self {
+        WrappedKeyPair::Ed25519(key_pair)
+    }
+}
+
 //--------------------------------------------------------------------------------------------------
 // Tests
 //--------------------------------------------------------------------------------------------------
@@ -148,6 +164,8 @@ impl<S> JwsAlgName for Ed25519Key<'_, S> {
 #[cfg(test)]
 mod tests {
     use anyhow::Ok;
+
+    use crate::IntoOwned;
 
     use super::*;
 
@@ -166,7 +184,7 @@ mod tests {
 
         assert_eq!(key_pair, private_key);
 
-        let public_key2 = key_pair.get_public_key();
+        let public_key2 = key_pair.public_key();
 
         assert_eq!(public_key, public_key2);
 
@@ -195,6 +213,24 @@ mod tests {
         tracing::debug!(?serialized);
         let deserialized = serde_json::from_str(&serialized)?;
         assert_eq!(pub_key, deserialized);
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_ed25519_wrap_into_inner() -> anyhow::Result<()> {
+        let mut rng = rand::thread_rng();
+        let key_pair = Ed25519KeyPair::generate(&mut rng)?;
+
+        let keypair_wrapped = WrappedKeyPair::from(key_pair.clone());
+        let keypair_unwrapped = keypair_wrapped.into_inner()?;
+        assert_eq!(key_pair, keypair_unwrapped);
+
+        let public_key = key_pair.public_key().into_owned();
+        let wrapped_pub_key = WrappedPubKey::from(public_key.clone());
+        let unwrapped_pub_key = wrapped_pub_key.into_inner::<Ed25519PubKey>()?;
+
+        assert_eq!(public_key, unwrapped_pub_key);
 
         Ok(())
     }

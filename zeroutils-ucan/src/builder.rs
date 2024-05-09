@@ -2,7 +2,7 @@ use std::time::SystemTime;
 
 use libipld::Cid;
 use serde_json::Value;
-use zeroutils_did_wk::DidWebKeyType;
+use zeroutils_did_wk::WrappedDidWebKey;
 use zeroutils_key::{JwsAlgName, Sign};
 use zeroutils_store::{IpldStore, PlaceholderStore};
 
@@ -36,8 +36,8 @@ impl<I, A, E, C, S> UcanBuilder<I, A, E, C, S> {
     /// Sets the issuer of the UCAN.
     pub fn issuer<'a>(
         self,
-        issuer: impl Into<DidWebKeyType<'a>>,
-    ) -> UcanBuilder<DidWebKeyType<'a>, A, E, C, S> {
+        issuer: impl Into<WrappedDidWebKey<'a>>,
+    ) -> UcanBuilder<WrappedDidWebKey<'a>, A, E, C, S> {
         UcanBuilder {
             issuer: issuer.into(),
             audience: self.audience,
@@ -54,8 +54,8 @@ impl<I, A, E, C, S> UcanBuilder<I, A, E, C, S> {
     /// Sets the audience (recipient) of the UCAN.
     pub fn audience<'a>(
         self,
-        audience: impl Into<DidWebKeyType<'a>>,
-    ) -> UcanBuilder<I, DidWebKeyType<'a>, E, C, S> {
+        audience: impl Into<WrappedDidWebKey<'a>>,
+    ) -> UcanBuilder<I, WrappedDidWebKey<'a>, E, C, S> {
         UcanBuilder {
             issuer: self.issuer,
             audience: audience.into(),
@@ -149,7 +149,7 @@ impl<I, A, E, C, S> UcanBuilder<I, A, E, C, S> {
 }
 
 impl<'a, I>
-    UcanBuilder<DidWebKeyType<'a>, DidWebKeyType<'a>, Option<SystemTime>, UcanCapabilities, I>
+    UcanBuilder<WrappedDidWebKey<'a>, WrappedDidWebKey<'a>, Option<SystemTime>, UcanCapabilities, I>
 where
     I: IpldStore,
 {
@@ -239,13 +239,13 @@ mod tests {
 
         assert_eq!(
             ucan.payload.issuer,
-            DidWebKeyType::from_str(
+            WrappedDidWebKey::from_str(
                 "did:wk:b44aqepqvrvaix2aosv2oluhoa3kf7yan6xevmn2asn3scuev2iydukkv"
             )?
         );
         assert_eq!(
             ucan.payload.audience,
-            DidWebKeyType::from_str(
+            WrappedDidWebKey::from_str(
                 "did:wk:b5ua5l4wgcp46zrtn3ihjjmu5gbyhusmyt5bianl5ov2yrvj7wnh4vti"
             )?
         );

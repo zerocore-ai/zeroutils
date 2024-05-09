@@ -25,13 +25,13 @@ where
     S: IpldStore,
 {
     /// The header of the UCAN, containing metadata and cryptographic information.
-    pub header: H,
+    pub(crate) header: H,
 
     /// The payload of the UCAN, containing the actual authorization data and claims.
-    pub payload: UcanPayload<'a, S>,
+    pub(crate) payload: UcanPayload<'a, S>,
 
     /// The signature of the UCAN, proving its authenticity.
-    pub signature: V,
+    pub(crate) signature: V,
 }
 
 /// A signed UCAN with header and signature.
@@ -55,6 +55,30 @@ struct SignedUcanSerde<'a> {
 struct UnsignedUcanSerde<'a, H> {
     header: H,
     payload: UcanPayload<'a, PlaceholderStore>,
+}
+
+//--------------------------------------------------------------------------------------------------
+// Methods
+//--------------------------------------------------------------------------------------------------
+
+impl<'a, S, H, V> Ucan<'a, S, H, V>
+where
+    S: IpldStore,
+{
+    /// Returns the header of the UCAN.
+    pub fn header(&self) -> &H {
+        &self.header
+    }
+
+    /// Returns the payload of the UCAN.
+    pub fn payload(&self) -> &UcanPayload<'a, S> {
+        &self.payload
+    }
+
+    /// Returns the signature of the UCAN.
+    pub fn signature(&self) -> &V {
+        &self.signature
+    }
 }
 
 //--------------------------------------------------------------------------------------------------

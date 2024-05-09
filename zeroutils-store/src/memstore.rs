@@ -31,6 +31,7 @@ pub const MEM_IPLD_STORE_BLOCK_SIZE: usize = 256 * 1024; // 256 KiB
 /// retrieval of blocks.
 ///
 /// Note: Currently, this implementation only supports DAG-CBOR codecs.
+#[derive(Debug, Clone)]
 pub struct MemoryIpldStore {
     blocks: Arc<RwLock<HashMap<Cid, (usize, Bytes)>>>,
 }
@@ -176,7 +177,7 @@ impl Default for MemoryIpldStore {
 mod tests {
     use super::*;
 
-    mod fixtures {
+    mod fixture {
         use libipld::Cid;
         use serde::{Deserialize, Serialize};
 
@@ -216,7 +217,7 @@ mod tests {
 
         //================= IPLD =================
 
-        let data = fixtures::Directory {
+        let data = fixture::Directory {
             name: "root".to_string(),
             entries: vec![
                 utils::make_cid(Codec::Raw, &[1, 2, 3]),
@@ -225,7 +226,7 @@ mod tests {
         };
 
         let cid = store.put(data.clone()).await?;
-        let res = store.get::<fixtures::Directory>(cid).await?;
+        let res = store.get::<fixture::Directory>(cid).await?;
         assert_eq!(res, StoreData::Ipld(data));
 
         Ok(())
@@ -235,7 +236,7 @@ mod tests {
     async fn test_memory_ipld_store_get_references() -> anyhow::Result<()> {
         let store = MemoryIpldStore::default();
 
-        let data = fixtures::Directory {
+        let data = fixture::Directory {
             name: "root".to_string(),
             entries: vec![
                 utils::make_cid(Codec::Raw, &[1, 2, 3]),

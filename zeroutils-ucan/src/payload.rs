@@ -8,7 +8,7 @@ use std::{
 
 use base64::prelude::{Engine, BASE64_URL_SAFE_NO_PAD};
 use serde::{Deserialize, Serialize, Serializer};
-use zeroutils_did_wk::DidWebKeyType;
+use zeroutils_did_wk::WrappedDidWebKey;
 use zeroutils_store::{IpldStore, PlaceholderStore};
 
 use crate::{UcanCapabilities, UcanError, UcanFacts, UcanProofs};
@@ -31,10 +31,10 @@ where
     S: IpldStore,
 {
     /// The DID (Decentralized Identifier) of the issuer who issued the UCAN.
-    pub(crate) issuer: DidWebKeyType<'a>,
+    pub(crate) issuer: WrappedDidWebKey<'a>,
 
     /// The DID of the audience, which is typically the recipient or verifier of the UCAN.
-    pub(crate) audience: DidWebKeyType<'a>,
+    pub(crate) audience: WrappedDidWebKey<'a>,
 
     /// The expiration time of the UCAN, after which it should no longer be considered valid.
     pub(crate) expiration: Option<SystemTime>,
@@ -112,6 +112,51 @@ where
             proofs: self.proofs,
             store,
         }
+    }
+
+    /// Returns the issuer of the UCAN.
+    pub fn issuer(&self) -> &WrappedDidWebKey<'a> {
+        &self.issuer
+    }
+
+    /// Returns the audience of the UCAN.
+    pub fn audience(&self) -> &WrappedDidWebKey<'a> {
+        &self.audience
+    }
+
+    /// Returns the expiration time of the UCAN.
+    pub fn expiration(&self) -> Option<SystemTime> {
+        self.expiration
+    }
+
+    /// Returns the time before which the UCAN should not be considered valid.
+    pub fn not_before(&self) -> Option<SystemTime> {
+        self.not_before
+    }
+
+    /// Returns the nonce used to ensure the uniqueness and to prevent replay attacks.
+    pub fn nonce(&self) -> Option<&str> {
+        self.nonce.as_deref()
+    }
+
+    /// Returns the additional facts or claims included in the UCAN.
+    pub fn facts(&self) -> Option<&UcanFacts> {
+        self.facts.as_ref()
+    }
+
+    /// Returns the capabilities or permissions granted by the UCAN.
+    pub fn capabilities(&self) -> &UcanCapabilities {
+        &self.capabilities
+    }
+
+    /// Returns the proofs or delegations referenced by the UCAN.
+    pub fn proofs(&self) -> &UcanProofs {
+        &self.proofs
+    }
+
+    /// Returns the data store used to resolve proof links in the UCAN.
+    pub fn store(&self) -> &S {
+        &self.store
     }
 }
 
@@ -200,9 +245,9 @@ mod tests {
     #[test_log::test]
     fn test_payload_serde() -> anyhow::Result<()> {
         let issuer =
-            DidWebKeyType::from_str("did:wk:z6MkktN9TYbYWDPFBhEEZXeD9MyZyUZ2yRNSj5BzDyLBKLkd")?;
+            WrappedDidWebKey::from_str("did:wk:z6MkktN9TYbYWDPFBhEEZXeD9MyZyUZ2yRNSj5BzDyLBKLkd")?;
         let audience =
-            DidWebKeyType::from_str("did:wk:m7QEI0Bnl9ShoGr1rc0+TQY64QH5hWC011zNh+CS96kg5Vw")?;
+            WrappedDidWebKey::from_str("did:wk:m7QEI0Bnl9ShoGr1rc0+TQY64QH5hWC011zNh+CS96kg5Vw")?;
 
         let expiration = Some(UNIX_EPOCH + Duration::from_secs(3600));
         let not_before = Some(UNIX_EPOCH);
@@ -235,9 +280,9 @@ mod tests {
 
         // Remove optional fields
         let issuer =
-            DidWebKeyType::from_str("did:wk:z6MkktN9TYbYWDPFBhEEZXeD9MyZyUZ2yRNSj5BzDyLBKLkd")?;
+            WrappedDidWebKey::from_str("did:wk:z6MkktN9TYbYWDPFBhEEZXeD9MyZyUZ2yRNSj5BzDyLBKLkd")?;
         let audience =
-            DidWebKeyType::from_str("did:wk:m7QEI0Bnl9ShoGr1rc0+TQY64QH5hWC011zNh+CS96kg5Vw")?;
+            WrappedDidWebKey::from_str("did:wk:m7QEI0Bnl9ShoGr1rc0+TQY64QH5hWC011zNh+CS96kg5Vw")?;
         let capabilities = UcanCapabilities::default();
 
         let payload = UcanPayload {
@@ -268,9 +313,9 @@ mod tests {
     #[test_log::test]
     fn test_payload_display() -> anyhow::Result<()> {
         let issuer =
-            DidWebKeyType::from_str("did:wk:z6MkktN9TYbYWDPFBhEEZXeD9MyZyUZ2yRNSj5BzDyLBKLkd")?;
+            WrappedDidWebKey::from_str("did:wk:z6MkktN9TYbYWDPFBhEEZXeD9MyZyUZ2yRNSj5BzDyLBKLkd")?;
         let audience =
-            DidWebKeyType::from_str("did:wk:m7QEI0Bnl9ShoGr1rc0+TQY64QH5hWC011zNh+CS96kg5Vw")?;
+            WrappedDidWebKey::from_str("did:wk:m7QEI0Bnl9ShoGr1rc0+TQY64QH5hWC011zNh+CS96kg5Vw")?;
         let expiration = Some(UNIX_EPOCH + Duration::from_secs(3600));
         let not_before = Some(UNIX_EPOCH);
         let nonce = Some("2b812184".to_string());
@@ -302,9 +347,9 @@ mod tests {
 
         // Remove optional fields
         let issuer =
-            DidWebKeyType::from_str("did:wk:z6MkktN9TYbYWDPFBhEEZXeD9MyZyUZ2yRNSj5BzDyLBKLkd")?;
+            WrappedDidWebKey::from_str("did:wk:z6MkktN9TYbYWDPFBhEEZXeD9MyZyUZ2yRNSj5BzDyLBKLkd")?;
         let audience =
-            DidWebKeyType::from_str("did:wk:m7QEI0Bnl9ShoGr1rc0+TQY64QH5hWC011zNh+CS96kg5Vw")?;
+            WrappedDidWebKey::from_str("did:wk:m7QEI0Bnl9ShoGr1rc0+TQY64QH5hWC011zNh+CS96kg5Vw")?;
         let capabilities = UcanCapabilities::default();
 
         let payload = UcanPayload {

@@ -21,7 +21,18 @@ pub const TYPE: &str = "JWT";
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub struct UcanHeader {
     /// The algorithm used for signing the token.
-    pub alg: JwsAlgorithm,
+    alg: JwsAlgorithm,
+}
+
+//--------------------------------------------------------------------------------------------------
+// Methods
+//--------------------------------------------------------------------------------------------------
+
+impl UcanHeader {
+    /// Returns the algorithm used for signing the token.
+    pub fn alg(&self) -> JwsAlgorithm {
+        self.alg
+    }
 }
 
 //--------------------------------------------------------------------------------------------------
