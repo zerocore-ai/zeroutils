@@ -21,11 +21,11 @@ use super::default::{DEFAULT_ELECTION_TIMEOUT_RANGE, DEFAULT_HEARTBEAT_INTERVAL}
 
 /// The default values for ports in the network configuration.
 pub trait PortDefaults {
-    /// The default port to listen on for peers.
-    fn default_peer_port() -> u16;
-
     /// The default port to listen on for users.
     fn default_user_port() -> u16;
+
+    /// The default port to listen on for peers.
+    fn default_peer_port() -> u16;
 }
 
 //--------------------------------------------------------------------------------------------------
@@ -55,15 +55,15 @@ strike! {
         #[builder(default = super::default::default_host())]
         pub host: IpAddr,
 
-        /// The port to listen on for peers.
-        #[serde(default = "D::default_peer_port")]
-        #[builder(default = D::default_peer_port())]
-        pub peer_port: u16,
-
         /// The port to listen on for users.
         #[serde(default = "D::default_user_port")]
         #[builder(default = D::default_user_port())]
         pub user_port: u16,
+
+        /// The port to listen on for peers.
+        #[serde(default = "D::default_peer_port")]
+        #[builder(default = D::default_peer_port())]
+        pub peer_port: u16,
 
         /// The peers to connect to.
         #[serde(default)]
@@ -175,11 +175,11 @@ mod tests {
         //--------------------------------------------------------------------------------------------------
 
         impl PortDefaults for MockPortDefaults {
-            fn default_peer_port() -> u16 {
+            fn default_user_port() -> u16 {
                 7700
             }
 
-            fn default_user_port() -> u16 {
+            fn default_peer_port() -> u16 {
                 7711
             }
         }
@@ -191,8 +191,8 @@ mod tests {
         id = "did:wk:z6MkoVs2h6TnfyY8fx2ZqpREWSLS8rBDQmGpyXgFpg63CSUb"
         name = "alice"
         host = "127.0.0.1"
-        peer_port = 7700
-        user_port = 7711
+        user_port = 7700
+        peer_port = 7711
 
         [seeds]
         "did:wk:m7QFAoSJPFzmaqQiTkLrWQ6pbYrmI6L07Fkdg8SCRpjP1Ig" = "127.0.0.1:7800"
@@ -210,8 +210,8 @@ mod tests {
             WrappedDidWebKey::from_str("did:wk:z6MkoVs2h6TnfyY8fx2ZqpREWSLS8rBDQmGpyXgFpg63CSUb")?
         );
         assert_eq!(config.host, IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)));
-        assert_eq!(config.peer_port, 7700);
-        assert_eq!(config.user_port, 7711);
+        assert_eq!(config.user_port, 7700);
+        assert_eq!(config.peer_port, 7711);
         assert_eq!(config.seeds, {
             let mut peers = HashMap::new();
             peers.insert(
@@ -239,8 +239,8 @@ mod tests {
         let config: NetworkConfig<MockPortDefaults> = toml::from_str("")?;
 
         assert_eq!(config.host, IpAddr::V4(Ipv4Addr::LOCALHOST));
-        assert_eq!(config.peer_port, 7700);
-        assert_eq!(config.user_port, 7711);
+        assert_eq!(config.user_port, 7700);
+        assert_eq!(config.peer_port, 7711);
         assert!(config.seeds.is_empty());
         assert_eq!(
             config.consensus.heartbeat_interval,
