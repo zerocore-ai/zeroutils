@@ -4,6 +4,7 @@
 #![allow(clippy::module_inception)]
 
 mod diskstore;
+mod dualstore;
 mod error;
 mod memstore;
 mod plcstore;
@@ -15,6 +16,7 @@ pub(crate) mod utils;
 //--------------------------------------------------------------------------------------------------
 
 pub use diskstore::*;
+pub use dualstore::*;
 pub use error::*;
 pub use memstore::*;
 pub use plcstore::*;

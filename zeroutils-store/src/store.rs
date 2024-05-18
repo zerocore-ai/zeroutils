@@ -22,7 +22,9 @@ use super::StoreResult;
 /// encoded IPLD or raw bytes. This means stored data with the same bytes will always have the same key. This makes the
 /// store ideal for deduplication of data and ensuring data integrity.
 ///
-/// NOTE: An implementation is responsible for how it encodes types and how encoded IPLD data is broken down into smaller blocks
+/// # Important
+///
+/// An implementation is responsible for how it encodes types and how encoded IPLD data is broken down into smaller blocks
 /// when it exceeds a certain pre-determined size.
 ///
 /// [cid]: https://docs.ipfs.tech/concepts/content-addressing/
@@ -40,18 +42,18 @@ pub trait IpldStore {
     /// Saves raw bytes  to the store and returns the `Cid` to it.
     ///
     /// This operation provides an opportunity for the store to build an internal graph of dependency.
-    fn put_bytes(&self, bytes: Bytes) -> impl Future<Output = StoreResult<Cid>>;
+    fn put_bytes(&self, bytes: impl Into<Bytes>) -> impl Future<Output = StoreResult<Cid>>;
 
-    /// Gets a type stored as an IPLD data or raw bytes from the store.
-    fn get<D>(&self, cid: impl Into<Cid>) -> impl Future<Output = StoreResult<StoreData<D>>>
+    /// Gets a type stored as an IPLD data from the store by its `Cid`.
+    fn get<D>(&self, cid: impl Into<Cid>) -> impl Future<Output = StoreResult<D>>
     where
         D: DeserializeOwned;
 
+    /// Gets the block stored in the store as raw bytes by its `Cid`.
+    fn get_bytes(&self, cid: impl Into<Cid>) -> impl Future<Output = StoreResult<Bytes>>;
+
     /// Gets the direct CID references contained in a given IPLD data.
-    fn get_references(
-        &self,
-        cid: impl Into<Cid>,
-    ) -> impl Future<Output = StoreResult<HashSet<Cid>>>;
+    fn references(&self, cid: impl Into<Cid>) -> impl Future<Output = StoreResult<HashSet<Cid>>>;
 
     /// Returns the codec used to encode the data stored in the store.
     fn supported_codec(&self) -> Codec;
@@ -64,16 +66,6 @@ pub trait IpldStore {
 
     // /// Returns the maximum block size the store can handle.
     // fn max_block_size(&self) -> usize;
-}
-
-/// The different types of data that can be stored in the store.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum StoreData<T = ()> {
-    /// Raw bytes.
-    Raw(Bytes),
-
-    /// IPLD data.
-    Ipld(T),
 }
 
 /// The different codecs supported by the IPLD store.

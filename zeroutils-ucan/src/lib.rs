@@ -1,8 +1,6 @@
 //! # `zeroutils-ucan`
 //!
 //! This crate provides a Rust implementation of the [UCAN (User Controlled Authorization Network)][ucan] specification.
-//! It is specifically designed to work with the [DID Web Key (DID-WK)][did-wk] method.
-//!
 //! UCANs are a decentralized authorization scheme that offers fine-grained, user-centric
 //! control over permissions. Unlike traditional access tokens, UCANs can be chained for
 //! delegation, enabling complex authorization scenarios without a central authority.
@@ -14,7 +12,10 @@
 //! * **Delegable:** Permissions can be fluidly passed along a chain of trust.
 //! * **Expressive:**  UCAN payload (`UcanPayload`) allows for a rich set of claims.
 //! * **Openly Extensible:** UCANs can be adapted for various use cases.
-//! This module currently only support the following DID methods:
+//!
+//! Although this library currently only suppports the [DID Web Key (`did:wk`)][did-wk] method, there are plans to support `did:key` in the future
+//! to make it fully spec-compliant with UCAN v0.10.0. Also note that `did:wk` with locator components are not supported. The dids are supposed
+//! to be self-certifying.
 //!
 //! [ucan]: https://github.com/ucan-wg/spec
 //! [did-wk]: https://github.com/zerocore-ai/did-wk
@@ -47,3 +48,12 @@ pub use proofs::*;
 pub use signature::*;
 pub use ucan::*;
 pub use uri::*;
+
+//--------------------------------------------------------------------------------------------------
+// Re-Exports
+//--------------------------------------------------------------------------------------------------
+
+/// Re-export of the `serde_json` crate.
+pub mod serde_json {
+    pub use serde_json::*;
+}

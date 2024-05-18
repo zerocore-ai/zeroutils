@@ -20,12 +20,22 @@ use crate::{
 
 /// A [`secp256k1`][ref] public key.
 ///
+/// # Important
+///
+/// [Secp256k1][ref] is not a [safe curve][safe-curves].
+///
 /// [ref]: https://en.bitcoin.it/wiki/Secp256k1
+/// [safe-curves]: https://safecurves.cr.yp.to/
 pub type Secp256k1PubKey<'a> = PubKey<'a, PublicKey>;
 
 /// A [`secp256k1`][ref] key pair with a signing key.
 ///
+/// # Important
+///
+/// [Secp256k1][ref] is not a [safe curve][safe-curves].
+///
 /// [ref]: https://en.bitcoin.it/wiki/Secp256k1
+/// [safe-curves]: https://safecurves.cr.yp.to/
 pub type Secp256k1KeyPair<'a> = Secp256k1Key<'a, SecretKey>;
 
 pub(crate) type Secp256k1Key<'a, S> = AsymmetricKey<'a, PublicKey, S>;

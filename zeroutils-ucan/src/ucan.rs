@@ -1,10 +1,13 @@
 use std::{fmt::Display, str::FromStr};
 
 use serde::{Deserialize, Serialize};
-use zeroutils_key::{JwsAlgName, JwsAlgorithm, Sign};
+use zeroutils_key::{JwsAlgName, JwsAlgorithm, Sign, Verify};
 use zeroutils_store::{IpldStore, PlaceholderStore};
 
-use crate::{UcanBuilder, UcanHeader, UcanPayload, UcanResult, UcanSignature};
+use crate::{
+    Ability, DefaultUcanBuilder, ResourceUri, UcanBuilder, UcanHeader, UcanPayload, UcanResult,
+    UcanSignature,
+};
 
 use super::UcanError;
 
@@ -17,6 +20,8 @@ use super::UcanError;
 /// UCANs are a decentralized authorization scheme that offers fine-grained, user-centric
 /// control over permissions. Unlike traditional access tokens, UCANs can be chained for
 /// delegation, enabling complex authorization scenarios without a central authority.
+///
+/// NOTE: This implementation currently only supports the `did:wk` DID method.
 ///
 /// [ucan]: https://github.com/ucan-wg/spec
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -32,12 +37,34 @@ where
 
     /// The signature of the UCAN, proving its authenticity.
     pub(crate) signature: V,
+    // /// Cached capabilities for the UCAN.
+    // resolved_capabilities: OnceCell<Capabilities<'a>>,
 }
 
-/// A signed UCAN with header and signature.
-pub type SignedUcan<'a, S> = Ucan<'a, S, UcanHeader, UcanSignature>;
+/// Represents a signed [UCAN (User-Controlled Authorization Network)][ucan] token with a header and signature.
+///
+/// UCANs are a decentralized authorization scheme that offers fine-grained, user-centric
+/// control over permissions. Unlike traditional access tokens, UCANs can be chained for
+/// delegation, enabling complex authorization scenarios without a central authority.
+///
+/// # Important
+///
+/// This implementation currently only supports the `did:wk` DID method.
+///
+/// [ucan]: https://github.com/ucan-wg/spec
+pub type SignedUcan<'a, S = PlaceholderStore> = Ucan<'a, S, UcanHeader, UcanSignature>;
 
-/// Unsigned UCAN with header and payload.
+/// Represents an unsigned [UCAN (User-Controlled Authorization Network)][ucan] token without a signature.
+///
+/// UCANs are a decentralized authorization scheme that offers fine-grained, user-centric
+/// control over permissions. Unlike traditional access tokens, UCANs can be chained for
+/// delegation, enabling complex authorization scenarios without a central authority.
+///
+/// # Important
+///
+/// This implementation currently only supports the `did:wk` DID method.
+///
+/// [ucan]: https://github.com/ucan-wg/spec
 pub type UnsignedUcan<'a, S, H = ()> = Ucan<'a, S, H, ()>;
 
 //--------------------------------------------------------------------------------------------------
@@ -61,6 +88,13 @@ struct UnsignedUcanSerde<'a, H> {
 // Methods
 //--------------------------------------------------------------------------------------------------
 
+impl Ucan<'_, PlaceholderStore> {
+    /// Creates a convenience builder for constructing a new UCAN.
+    pub fn builder<'a>() -> DefaultUcanBuilder<'a> {
+        UcanBuilder::default()
+    }
+}
+
 impl<'a, S, H, V> Ucan<'a, S, H, V>
 where
     S: IpldStore,
@@ -81,17 +115,6 @@ where
     }
 }
 
-//--------------------------------------------------------------------------------------------------
-// Methods
-//--------------------------------------------------------------------------------------------------
-
-impl Ucan<'_, PlaceholderStore> {
-    /// Creates a convenience builder for constructing a new UCAN.
-    pub fn builder() -> UcanBuilder {
-        UcanBuilder::default()
-    }
-}
-
 impl<'a, S, H, V> Ucan<'a, S, H, V>
 where
     S: IpldStore,
@@ -106,7 +129,7 @@ where
     }
 
     /// Transforms the Ucan to use a different IPLD store.
-    pub fn use_store<T>(self, store: T) -> Ucan<'a, T, H, V>
+    pub fn use_store<T>(self, store: &'a T) -> Ucan<'a, T, H, V>
     where
         T: IpldStore,
     {
@@ -124,6 +147,11 @@ where
             payload: self.payload,
             signature: self.signature,
         }
+    }
+
+    /// Validates the UCAN, ensuring that it is well-formed.
+    pub fn validate(&self) -> UcanResult<()> {
+        self.payload.validate()
     }
 }
 
@@ -152,11 +180,48 @@ impl<'a, S> SignedUcan<'a, S>
 where
     S: IpldStore,
 {
-    /// Verifies the integrity of the signed UCAN.
-    pub fn verify(&self) -> UcanResult<()> {
-        // TODO: Implement signature verification using issuer's public key
-        // and stored hash if applicable.
-        unimplemented!()
+    /// Parses a signed UCAN from a string representation with a specified IPLD store.
+    pub fn with_store(string: impl AsRef<str>, store: &'a S) -> UcanResult<SignedUcan<'a, S>> {
+        let ucan: SignedUcan<'a, PlaceholderStore> = string.as_ref().parse()?;
+        Ok(ucan.use_store(store))
+    }
+
+    /// Resolves the capabilities of a UCAN to their final form.
+    pub fn resolve_capabilities(&mut self) -> UcanResult<()> {
+        self.validate()?;
+
+        todo!("resolve capabilities")
+    }
+
+    /// Verifies the signature of the current UCAN against the public key of the issuer.
+    pub fn verify_principal_alignment(&self, issuer_ucan: SignedUcan<'a, S>) -> UcanResult<()> {
+        let our_issuer = self.payload.issuer();
+        let their_audience = issuer_ucan.payload.audience();
+
+        // Check if their `aud` field matches our `iss` field
+        if our_issuer != their_audience {
+            return Err(UcanError::PrincipalAlignmentFailed(
+                our_issuer.to_string(),
+                their_audience.to_string(),
+            ));
+        }
+
+        // Check if issuer's key signed our UCAN
+        let unsigned_ucan = UnsignedUcan::from_parts(self.header.clone(), self.payload.clone(), ());
+        our_issuer
+            .public_key()
+            .verify(unsigned_ucan.to_string().as_bytes(), self.signature())?;
+
+        Ok(())
+    }
+
+    /// TODO: Implement this method.
+    pub fn allows<'b>(
+        &self,
+        _resource: impl TryInto<ResourceUri<'b>>,
+        _ability: impl TryInto<Ability>,
+    ) -> UcanResult<bool> {
+        todo!()
     }
 }
 
@@ -247,13 +312,7 @@ impl<'a> Serialize for SignedUcan<'a, PlaceholderStore> {
     where
         S: serde::Serializer,
     {
-        let parts = SignedUcanSerde {
-            header: self.header.clone(),
-            payload: self.payload.clone(),
-            signature: self.signature.clone(),
-        };
-
-        parts.serialize(serializer)
+        serializer.serialize_str(&self.to_string())
     }
 }
 
@@ -280,13 +339,8 @@ impl<'a, 'de> Deserialize<'de> for SignedUcan<'a, PlaceholderStore> {
     where
         D: serde::Deserializer<'de>,
     {
-        let ucan = SignedUcanSerde::deserialize(deserializer)?;
-
-        Ok(Ucan {
-            header: ucan.header,
-            payload: ucan.payload,
-            signature: ucan.signature,
-        })
+        let s = String::deserialize(deserializer)?;
+        s.parse().map_err(serde::de::Error::custom)
     }
 }
 
@@ -300,6 +354,8 @@ mod tests {
 
     use zeroutils_key::{Ed25519KeyPair, KeyPairGenerate};
 
+    use crate::caps;
+
     use super::*;
 
     #[test_log::test]
@@ -308,16 +364,20 @@ mod tests {
         let ucan = Ucan::builder()
             .issuer("did:wk:m5wECtxi2kxRme2uhswu46BwzRtqvhEznWKucFrrph0I7+uo")
             .audience("did:wk:b5ua5l4wgcp46zrtn3ihjjmu5gbyhusmyt5bianl5ov2yrvj7wnh4vti")
-            .expiration(Some(UNIX_EPOCH + std::time::Duration::from_secs(3600)))
+            .expiration(UNIX_EPOCH + std::time::Duration::from_secs(3600))
             .not_before(UNIX_EPOCH)
             .nonce("1100263a4012")
             .facts(vec![])
-            .capabilities(vec![])
+            .capabilities(caps!())
             .proofs(vec![])
             .build();
 
         let serialized = serde_json::to_string(&ucan)?;
         tracing::debug!(?serialized);
+        assert_eq!(
+            serialized,
+            r#"{"header":null,"payload":{"ucv":"0.10.0-alpha.1","iss":"did:wk:m5wECtxi2kxRme2uhswu46BwzRtqvhEznWKucFrrph0I7+uo","aud":"did:wk:b5ua5l4wgcp46zrtn3ihjjmu5gbyhusmyt5bianl5ov2yrvj7wnh4vti","exp":3600,"nbf":0,"nnc":"1100263a4012","fct":{},"cap":{}}}"#
+        );
 
         let deserialized: UnsignedUcan<PlaceholderStore> = serde_json::from_str(&serialized)?;
         assert_eq!(deserialized, ucan);
@@ -331,16 +391,20 @@ mod tests {
         let signed_ucan = Ucan::builder()
             .issuer("did:wk:m5wECtxi2kxRme2uhswu46BwzRtqvhEznWKucFrrph0I7+uo")
             .audience("did:wk:b5ua5l4wgcp46zrtn3ihjjmu5gbyhusmyt5bianl5ov2yrvj7wnh4vti")
-            .expiration(Some(UNIX_EPOCH + std::time::Duration::from_secs(3600)))
+            .expiration(UNIX_EPOCH + std::time::Duration::from_secs(3600))
             .not_before(UNIX_EPOCH)
             .nonce("1100263a4012")
             .facts(vec![])
-            .capabilities(vec![])
+            .capabilities(caps!())
             .proofs(vec![])
             .sign(&keypair)?;
 
         let serialized = serde_json::to_string(&signed_ucan)?;
         tracing::debug!(?serialized);
+        assert_eq!(
+            serialized,
+            r#""eyJhbGciOiJFZERTQSIsInR5cCI6IkpXVCJ9.eyJ1Y3YiOiIwLjEwLjAtYWxwaGEuMSIsImlzcyI6ImRpZDp3azptNXdFQ3R4aTJreFJtZTJ1aHN3dTQ2Qnd6UnRxdmhFem5XS3VjRnJycGgwSTcrdW8iLCJhdWQiOiJkaWQ6d2s6YjV1YTVsNHdnY3A0NnpydG4zaWhqam11NWdieWh1c215dDViaWFubDVvdjJ5cnZqN3duaDR2dGkiLCJleHAiOjM2MDAsIm5iZiI6MCwibm5jIjoiMTEwMDI2M2E0MDEyIiwiZmN0Ijp7fSwiY2FwIjp7fX0.BS7o33ih64jHkYeWB02gT1PPlqMrbhx1hSzt-197X0sEFffnRT_riiSLLudqp_MhFOA1yO8BPDelrINMPURaCg""#
+        );
 
         let deserialized: SignedUcan<PlaceholderStore> = serde_json::from_str(&serialized)?;
         assert_eq!(deserialized, signed_ucan);
@@ -350,30 +414,6 @@ mod tests {
 
     #[test_log::test]
     fn test_ucan_display() -> anyhow::Result<()> {
-        // Unsigned UCAN with header
-        let ucan = Ucan::builder()
-            .issuer("did:wk:m5wECtxi2kxRme2uhswu46BwzRtqvhEznWKucFrrph0I7+uo")
-            .audience("did:wk:b5ua5l4wgcp46zrtn3ihjjmu5gbyhusmyt5bianl5ov2yrvj7wnh4vti")
-            .expiration(Some(UNIX_EPOCH + std::time::Duration::from_secs(3600)))
-            .not_before(UNIX_EPOCH)
-            .nonce("1100263a4012")
-            .facts(vec![])
-            .capabilities(vec![])
-            .proofs(vec![])
-            .build();
-
-        let ucan = ucan.use_alg(JwsAlgorithm::EdDSA);
-
-        let encoded = ucan.to_string();
-        tracing::debug!(?encoded);
-        assert_eq!(
-            encoded,
-            "eyJhbGciOiJFZERTQSIsInR5cCI6IkpXVCJ9.eyJ1Y3YiOiIwLjEwLjAtYWxwaGEuMSIsImlzcyI6ImRpZDp3azptNXdFQ3R4aTJreFJtZTJ1aHN3dTQ2Qnd6UnRxdmhFem5XS3VjRnJycGgwSTcrdW8iLCJhdWQiOiJkaWQ6d2s6YjV1YTVsNHdnY3A0NnpydG4zaWhqam11NWdieWh1c215dDViaWFubDVvdjJ5cnZqN3duaDR2dGkiLCJleHAiOjM2MDAsIm5iZiI6MCwibm5jIjoiMTEwMDI2M2E0MDEyIiwiZmN0Ijp7fSwiY2FwIjp7fX0"
-        );
-
-        let decoded: UnsignedUcan<PlaceholderStore, UcanHeader> = encoded.parse()?;
-        assert_eq!(decoded, ucan);
-
         // Signed UCAN
         let keypair = Ed25519KeyPair::from_private_key(&vec![
             190, 244, 147, 155, 83, 151, 225, 133, 7, 166, 15, 183, 157, 168, 142, 25, 128, 4, 106,
@@ -383,11 +423,16 @@ mod tests {
         let signed_ucan = Ucan::builder()
             .issuer("did:wk:m5wECtxi2kxRme2uhswu46BwzRtqvhEznWKucFrrph0I7+uo")
             .audience("did:wk:b5ua5l4wgcp46zrtn3ihjjmu5gbyhusmyt5bianl5ov2yrvj7wnh4vti")
-            .expiration(Some(UNIX_EPOCH + std::time::Duration::from_secs(3600)))
+            .expiration(UNIX_EPOCH + std::time::Duration::from_secs(3600))
             .not_before(UNIX_EPOCH)
             .nonce("1100263a4012")
             .facts(vec![])
-            .capabilities(vec![])
+            .capabilities(caps! {
+                "zerofs://public/photos/dogs/": {
+                    "entity/read": [{}],
+                    "entity/write": [{}],
+                },
+            })
             .proofs(vec![])
             .sign(&keypair)?;
 
@@ -395,7 +440,7 @@ mod tests {
         tracing::debug!(?encoded);
         assert_eq!(
             encoded,
-            "eyJhbGciOiJFZERTQSIsInR5cCI6IkpXVCJ9.eyJ1Y3YiOiIwLjEwLjAtYWxwaGEuMSIsImlzcyI6ImRpZDp3azptNXdFQ3R4aTJreFJtZTJ1aHN3dTQ2Qnd6UnRxdmhFem5XS3VjRnJycGgwSTcrdW8iLCJhdWQiOiJkaWQ6d2s6YjV1YTVsNHdnY3A0NnpydG4zaWhqam11NWdieWh1c215dDViaWFubDVvdjJ5cnZqN3duaDR2dGkiLCJleHAiOjM2MDAsIm5iZiI6MCwibm5jIjoiMTEwMDI2M2E0MDEyIiwiZmN0Ijp7fSwiY2FwIjp7fX0.BS7o33ih64jHkYeWB02gT1PPlqMrbhx1hSzt-197X0sEFffnRT_riiSLLudqp_MhFOA1yO8BPDelrINMPURaCg"
+            "eyJhbGciOiJFZERTQSIsInR5cCI6IkpXVCJ9.eyJ1Y3YiOiIwLjEwLjAtYWxwaGEuMSIsImlzcyI6ImRpZDp3azptNXdFQ3R4aTJreFJtZTJ1aHN3dTQ2Qnd6UnRxdmhFem5XS3VjRnJycGgwSTcrdW8iLCJhdWQiOiJkaWQ6d2s6YjV1YTVsNHdnY3A0NnpydG4zaWhqam11NWdieWh1c215dDViaWFubDVvdjJ5cnZqN3duaDR2dGkiLCJleHAiOjM2MDAsIm5iZiI6MCwibm5jIjoiMTEwMDI2M2E0MDEyIiwiZmN0Ijp7fSwiY2FwIjp7Inplcm9mczovL3B1YmxpYy9waG90b3MvZG9ncy8iOnsiZW50aXR5L3JlYWQiOlt7fV0sImVudGl0eS93cml0ZSI6W3t9XX19fQ.EPLDBEGlUi9pmFjahJEepLl1D7fKT8FbZ887SJshzauTWLZ8b9tkfke0_qYK0lOsexd62R3VC7RR9FIR_UYvCg"
         );
 
         let decoded: SignedUcan<PlaceholderStore> = encoded.parse()?;
@@ -406,7 +451,7 @@ mod tests {
             .issuer("did:wk:m5wECtxi2kxRme2uhswu46BwzRtqvhEznWKucFrrph0I7+uo")
             .audience("did:wk:b5ua5l4wgcp46zrtn3ihjjmu5gbyhusmyt5bianl5ov2yrvj7wnh4vti")
             .expiration(None)
-            .capabilities(vec![])
+            .capabilities(caps!())
             .sign(&keypair)?;
 
         let encoded = signed_ucan.to_string();

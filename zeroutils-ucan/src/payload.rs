@@ -1,17 +1,19 @@
 #![allow(clippy::mutable_key_type)]
 
 use std::{
+    collections::BTreeSet,
     fmt::Display,
     str::FromStr,
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
 use base64::prelude::{Engine, BASE64_URL_SAFE_NO_PAD};
+use libipld::{cid::Version, multihash::Code, Cid};
 use serde::{Deserialize, Serialize, Serializer};
 use zeroutils_did_wk::WrappedDidWebKey;
 use zeroutils_store::{IpldStore, PlaceholderStore};
 
-use crate::{UcanCapabilities, UcanError, UcanFacts, UcanProofs};
+use crate::{Capabilities, Facts, Proofs, SignedUcan, UcanError, UcanResult};
 
 //--------------------------------------------------------------------------------------------------
 // Constants
@@ -25,7 +27,7 @@ pub const VERSION: &str = "0.10.0-alpha.1";
 //--------------------------------------------------------------------------------------------------
 
 /// Represents the payload part of a UCAN token, which contains all the claims and data necessary for the authorization process.
-#[derive(Debug, PartialEq, Eq, Clone)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct UcanPayload<'a, S>
 where
     S: IpldStore,
@@ -46,16 +48,16 @@ where
     pub(crate) nonce: Option<String>,
 
     /// Additional facts or claims included in the UCAN.
-    pub(crate) facts: Option<UcanFacts>,
+    pub(crate) facts: Option<Facts>,
 
     /// The capabilities or permissions granted by the UCAN.
-    pub(crate) capabilities: UcanCapabilities,
+    pub(crate) capabilities: Capabilities<'a>,
 
     /// Proofs or delegations referenced by the UCAN.
-    pub(crate) proofs: UcanProofs,
+    pub(crate) proofs: Proofs<'a, S>,
 
     /// The data store used to resolve proof links in the UCAN.
-    pub(crate) store: S,
+    pub(crate) store: &'a S,
 }
 
 //--------------------------------------------------------------------------------------------------
@@ -63,7 +65,7 @@ where
 //--------------------------------------------------------------------------------------------------
 
 #[derive(Serialize, Deserialize)]
-struct UcanPayloadSerde {
+struct UcanPayloadSerde<'a> {
     #[serde(skip_deserializing)]
     ucv: &'static str,
 
@@ -80,12 +82,12 @@ struct UcanPayloadSerde {
     nnc: Option<String>,
 
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    fct: Option<UcanFacts>,
+    fct: Option<Facts>,
 
-    cap: UcanCapabilities,
+    cap: Capabilities<'a>,
 
-    #[serde(default, skip_serializing_if = "UcanProofs::is_empty")]
-    prf: UcanProofs,
+    #[serde(default, skip_serializing_if = "BTreeSet::is_empty")]
+    prf: BTreeSet<Cid>,
 }
 
 //--------------------------------------------------------------------------------------------------
@@ -96,8 +98,8 @@ impl<'a, S> UcanPayload<'a, S>
 where
     S: IpldStore,
 {
-    /// Allows changing the data store for the UCAN payload.
-    pub fn use_store<T>(self, store: T) -> UcanPayload<'a, T>
+    /// Changes the store for the UCAN payload.
+    pub fn use_store<T>(self, store: &'a T) -> UcanPayload<'a, T>
     where
         T: IpldStore,
     {
@@ -109,7 +111,7 @@ where
             nonce: self.nonce,
             facts: self.facts,
             capabilities: self.capabilities,
-            proofs: self.proofs,
+            proofs: self.proofs.use_store(store),
             store,
         }
     }
@@ -140,23 +142,72 @@ where
     }
 
     /// Returns the additional facts or claims included in the UCAN.
-    pub fn facts(&self) -> Option<&UcanFacts> {
+    pub fn facts(&self) -> Option<&Facts> {
         self.facts.as_ref()
     }
 
     /// Returns the capabilities or permissions granted by the UCAN.
-    pub fn capabilities(&self) -> &UcanCapabilities {
+    pub fn capabilities(&self) -> &Capabilities {
         &self.capabilities
     }
 
     /// Returns the proofs or delegations referenced by the UCAN.
-    pub fn proofs(&self) -> &UcanProofs {
+    pub fn proofs(&self) -> &Proofs<'a, S> {
         &self.proofs
     }
 
     /// Returns the data store used to resolve proof links in the UCAN.
     pub fn store(&self) -> &S {
-        &self.store
+        self.store
+    }
+}
+
+//--------------------------------------------------------------------------------------------------
+// Methods
+//--------------------------------------------------------------------------------------------------
+
+impl<'a, S> UcanPayload<'a, S>
+where
+    S: IpldStore,
+{
+    /// Create a new UCAN payload with the given store.
+    pub fn with_store(string: impl AsRef<str>, store: &'a S) -> UcanResult<UcanPayload<'a, S>> {
+        let ucan = UcanPayload::from_str(string.as_ref())?;
+        Ok(ucan.use_store(store))
+    }
+
+    /// Validates the UCAN, ensuring that it is well-formed.
+    pub fn validate(&self) -> UcanResult<()> {
+        self.validate_time_bounds()
+    }
+
+    /// Checks if the UCAN's time bounds (`exp`, `nbf`) are valid relative to the current time (`now`).
+    pub fn validate_time_bounds(&self) -> UcanResult<()> {
+        if let (Some(exp), Some(nbf)) = (self.expiration, self.not_before) {
+            if exp < nbf {
+                return Err(UcanError::InvalidTimeBounds(nbf, exp));
+            }
+        }
+
+        let now = SystemTime::now();
+        if let Some(exp) = self.expiration {
+            if now > exp {
+                return Err(UcanError::Expired(exp));
+            }
+        }
+
+        if let Some(nbf) = self.not_before {
+            if now < nbf {
+                return Err(UcanError::NotYetValid(nbf));
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Fetches the signed UCAN associated with the given CID.
+    pub async fn fetch_proof_ucan(&'a mut self, cid: &Cid) -> UcanResult<&'a SignedUcan<'a, S>> {
+        self.proofs.fetch_cached_ucan(cid, self.store).await
     }
 }
 
@@ -185,7 +236,7 @@ where
             nnc: self.nonce.clone(),
             fct: self.facts.clone(),
             cap: self.capabilities.clone(),
-            prf: self.proofs.clone(),
+            prf: self.proofs.clone().into(),
         };
 
         serde.serialize(serializer)
@@ -199,16 +250,66 @@ impl<'a, 'de> Deserialize<'de> for UcanPayload<'a, PlaceholderStore> {
     {
         let payload = UcanPayloadSerde::deserialize(deserializer)?;
 
+        // Check if the UCAN's version is supported.
+        if payload.ucv != VERSION {
+            return Err(serde::de::Error::custom(UcanError::UnsupportedVersion(
+                payload.ucv.to_owned(),
+            )));
+        }
+
+        // Check if the UCAN's proofs are all valid CIDs. Essentially, this checks that the CIDs are
+        // of version `1`, hash function `SHA-256`, and codec `Raw`.
+        for cid in &payload.prf {
+            let version = cid.version();
+            if version != Version::V1 {
+                return Err(serde::de::Error::custom(UcanError::InvalidProofCidVersion(
+                    version,
+                )));
+            }
+
+            let hash_code = cid.hash().code();
+            if hash_code != u64::from(Code::Sha2_256) {
+                return Err(serde::de::Error::custom(UcanError::InvalidProofCidHash(
+                    hash_code,
+                )));
+            }
+
+            let codec = cid.codec();
+            if codec != 0x55 {
+                return Err(serde::de::Error::custom(UcanError::InvalidProofCidCodec(
+                    codec,
+                )));
+            }
+        }
+
+        let issuer = WrappedDidWebKey::from_str(&payload.iss).map_err(serde::de::Error::custom)?;
+        let audience =
+            WrappedDidWebKey::from_str(&payload.aud).map_err(serde::de::Error::custom)?;
+
+        // `did:wk` with locator component not supported for issuer
+        if issuer.locator_component().is_some() {
+            return Err(serde::de::Error::custom(
+                UcanError::UnsupportedDidWkLocator(issuer.to_string()),
+            ));
+        }
+
+        // `did:wk` with locator component not supported for audience
+        if audience.locator_component().is_some() {
+            return Err(serde::de::Error::custom(
+                UcanError::UnsupportedDidWkLocator(audience.to_string()),
+            ));
+        }
+
         Ok(UcanPayload {
-            issuer: payload.iss.parse().map_err(serde::de::Error::custom)?,
-            audience: payload.aud.parse().map_err(serde::de::Error::custom)?,
+            issuer,
+            audience,
             expiration: payload.exp.map(|d| UNIX_EPOCH + Duration::from_secs(d)),
             not_before: payload.nbf.map(|d| UNIX_EPOCH + Duration::from_secs(d)),
             nonce: payload.nnc,
             facts: payload.fct,
             capabilities: payload.cap,
-            proofs: payload.prf,
-            store: PlaceholderStore,
+            proofs: payload.prf.into_iter().collect(),
+            store: &PlaceholderStore,
         })
     }
 }
@@ -233,6 +334,25 @@ impl<'a> FromStr for UcanPayload<'a, PlaceholderStore> {
     }
 }
 
+impl<'a, S> Clone for UcanPayload<'a, S>
+where
+    S: IpldStore,
+{
+    fn clone(&self) -> Self {
+        Self {
+            issuer: self.issuer.clone(),
+            audience: self.audience.clone(),
+            expiration: self.expiration,
+            not_before: self.not_before,
+            nonce: self.nonce.clone(),
+            facts: self.facts.clone(),
+            capabilities: self.capabilities.clone(),
+            proofs: self.proofs.clone(),
+            store: self.store,
+        }
+    }
+}
+
 //--------------------------------------------------------------------------------------------------
 // Tests
 //--------------------------------------------------------------------------------------------------
@@ -252,9 +372,9 @@ mod tests {
         let expiration = Some(UNIX_EPOCH + Duration::from_secs(3600));
         let not_before = Some(UNIX_EPOCH);
         let nonce = Some("2b812184".to_string());
-        let facts = Some(UcanFacts::default());
-        let capabilities = UcanCapabilities::default();
-        let proofs = UcanProofs::default();
+        let facts = Some(Facts::default());
+        let capabilities = Capabilities::default();
+        let proofs = Proofs::default();
 
         let payload = UcanPayload {
             issuer,
@@ -265,7 +385,7 @@ mod tests {
             facts,
             capabilities,
             proofs,
-            store: PlaceholderStore,
+            store: &PlaceholderStore,
         };
 
         let serialized = serde_json::to_string(&payload)?;
@@ -283,7 +403,7 @@ mod tests {
             WrappedDidWebKey::from_str("did:wk:z6MkktN9TYbYWDPFBhEEZXeD9MyZyUZ2yRNSj5BzDyLBKLkd")?;
         let audience =
             WrappedDidWebKey::from_str("did:wk:m7QEI0Bnl9ShoGr1rc0+TQY64QH5hWC011zNh+CS96kg5Vw")?;
-        let capabilities = UcanCapabilities::default();
+        let capabilities = Capabilities::default();
 
         let payload = UcanPayload {
             issuer,
@@ -293,8 +413,8 @@ mod tests {
             nonce: None,
             facts: None,
             capabilities,
-            proofs: UcanProofs::default(),
-            store: PlaceholderStore,
+            proofs: Proofs::default(),
+            store: &PlaceholderStore,
         };
 
         let serialized = serde_json::to_string(&payload)?;
@@ -319,9 +439,9 @@ mod tests {
         let expiration = Some(UNIX_EPOCH + Duration::from_secs(3600));
         let not_before = Some(UNIX_EPOCH);
         let nonce = Some("2b812184".to_string());
-        let facts = Some(UcanFacts::default());
-        let capabilities = UcanCapabilities::default();
-        let proofs = UcanProofs::default();
+        let facts = Some(Facts::default());
+        let capabilities = Capabilities::default();
+        let proofs = Proofs::default();
 
         let payload = UcanPayload {
             issuer,
@@ -332,7 +452,7 @@ mod tests {
             facts,
             capabilities,
             proofs,
-            store: PlaceholderStore,
+            store: &PlaceholderStore,
         };
 
         let displayed = payload.to_string();
@@ -350,7 +470,7 @@ mod tests {
             WrappedDidWebKey::from_str("did:wk:z6MkktN9TYbYWDPFBhEEZXeD9MyZyUZ2yRNSj5BzDyLBKLkd")?;
         let audience =
             WrappedDidWebKey::from_str("did:wk:m7QEI0Bnl9ShoGr1rc0+TQY64QH5hWC011zNh+CS96kg5Vw")?;
-        let capabilities = UcanCapabilities::default();
+        let capabilities = Capabilities::default();
 
         let payload = UcanPayload {
             issuer,
@@ -360,8 +480,8 @@ mod tests {
             nonce: None,
             facts: None,
             capabilities,
-            proofs: UcanProofs::default(),
-            store: PlaceholderStore,
+            proofs: Proofs::default(),
+            store: &PlaceholderStore,
         };
 
         let displayed = payload.to_string();

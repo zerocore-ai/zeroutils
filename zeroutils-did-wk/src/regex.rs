@@ -6,17 +6,17 @@ use regex::{Regex, RegexBuilder};
 //--------------------------------------------------------------------------------------------------
 
 lazy_static! {
-    /// A pattern that matches `did:wk:` prefix of a [DID Web Key (DID-WK)][ref] identifier.
+    /// A pattern that matches `did:wk:` prefix of a [DID Web Key (`did:wk`)][ref] identifier.
     ///
     /// [ref]: https://github.com/zerocore-ai/did-wk
     pub static ref RE_METHOD: Regex = Regex::new(r"^did:wk:$").unwrap();
 
-    /// A pattern that matches the key part of a [DID Web Key (DID-WK)][ref] identifier.
+    /// A pattern that matches the key part of a [DID Web Key (`did:wk`)][ref] identifier.
     ///
     /// [ref]: https://github.com/zerocore-ai/did-wk
     pub static ref RE_KEY: Regex = Regex::new(r"^[^@]+$").unwrap();
 
-    /// A pattern that matches the locator part of a [DID Web Key (DID-WK)][ref] identifier.
+    /// A pattern that matches the locator part of a [DID Web Key (`did:wk`)][ref] identifier.
     ///
     /// [ref]: https://github.com/zerocore-ai/did-wk
     pub static ref RE_LOCATOR: Regex = RegexBuilder::new(&format!(r"^{LOCATOR}$", LOCATOR = *LOCATOR))

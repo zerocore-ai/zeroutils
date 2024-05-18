@@ -25,18 +25,22 @@ impl IpldStore for PlaceholderStore {
         unimplemented!("placeholder")
     }
 
-    async fn put_bytes(&self, _: bytes::Bytes) -> StoreResult<Cid> {
+    async fn put_bytes(&self, _: impl Into<bytes::Bytes>) -> StoreResult<Cid> {
         unimplemented!("placeholder")
     }
 
-    async fn get<D>(&self, _: impl Into<Cid>) -> StoreResult<crate::StoreData<D>>
+    async fn get<D>(&self, _: impl Into<Cid>) -> StoreResult<D>
     where
         D: serde::de::DeserializeOwned,
     {
         unimplemented!("placeholder")
     }
 
-    async fn get_references(&self, _: impl Into<Cid>) -> StoreResult<HashSet<Cid>> {
+    async fn get_bytes(&self, _: impl Into<Cid>) -> StoreResult<bytes::Bytes> {
+        unimplemented!("placeholder")
+    }
+
+    async fn references(&self, _: impl Into<Cid>) -> StoreResult<HashSet<Cid>> {
         unimplemented!("placeholder")
     }
 

@@ -7,7 +7,7 @@ use serde_json::Value;
 //--------------------------------------------------------------------------------------------------
 
 /// A collection of additional facts or assertions stored as key-value pairs in a UCAN token.
-pub type UcanFacts = BTreeMap<String, Value>;
+pub type Facts = BTreeMap<String, Value>;
 
 //--------------------------------------------------------------------------------------------------
 // Tests
@@ -21,7 +21,7 @@ mod tests {
 
     #[test]
     fn test_ucan_facts_serde() -> anyhow::Result<()> {
-        let mut facts = UcanFacts::new();
+        let mut facts = Facts::new();
         facts.insert("key1".to_string(), json!("value1"));
         facts.insert("key2".to_string(), json!("value2"));
 

@@ -83,16 +83,19 @@ pub trait KeyPairBytes: PublicKeyBytes {
     fn private_key_bytes(&self) -> Vec<u8>;
 }
 
-/// A trait for performing key exchange operations, such as those used in Diffie-Hellman
-/// key agreement protocols.
-pub trait DiffieHellmanExchange {
-    /// The type of key that is exchanged. This could be a session key, shared secret, or
-    /// any other form of key material used in cryptographic operations.
-    type SessionKey;
+/// A trait for performing an elliptic-curve base Diffie-Hellman key exchange.
+pub trait ECDHKeyExchange {
+    /// The type of key that is exchanged.
+    ///
+    /// It represents the key agreed upon by both parties after the exchange.
+    type SharedKey;
 
     /// Executes a key exchange operation using the provided public key of
     /// another party.
-    fn exchange(&self, public_key: &[u8]) -> KeyResult<Self::SessionKey>;
+    ///
+    /// RECCOMENDATION: The shared key should be further derived using a key derivation function like
+    /// HKDF with a salt and info.
+    fn exchange(&self, public_key: &[u8]) -> KeyResult<Self::SharedKey>;
 }
 
 /// A trait for getting the algorithm name of a JWS key.

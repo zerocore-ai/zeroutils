@@ -1,4 +1,4 @@
-use std::{fmt::Display, str::FromStr};
+use std::{fmt::Display, ops::Deref, str::FromStr};
 
 use base64::prelude::{Engine, BASE64_URL_SAFE_NO_PAD};
 use serde::{Deserialize, Serialize};
@@ -16,6 +16,22 @@ use crate::UcanError;
 /// key specified in the UCAN header.
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub struct UcanSignature(Vec<u8>);
+
+//--------------------------------------------------------------------------------------------------
+// Methods
+//--------------------------------------------------------------------------------------------------
+
+impl UcanSignature {
+    /// Returns the raw bytes of the signature.
+    pub fn as_bytes(&self) -> &[u8] {
+        &self.0
+    }
+
+    /// Converts the signature into a vector of bytes.
+    pub fn to_vec(&self) -> Vec<u8> {
+        self.0.clone()
+    }
+}
 
 //--------------------------------------------------------------------------------------------------
 // Trait Implementations
@@ -59,6 +75,20 @@ impl FromStr for UcanSignature {
 impl From<Vec<u8>> for UcanSignature {
     fn from(signature: Vec<u8>) -> Self {
         Self(signature)
+    }
+}
+
+impl From<UcanSignature> for Vec<u8> {
+    fn from(signature: UcanSignature) -> Self {
+        signature.0
+    }
+}
+
+impl Deref for UcanSignature {
+    type Target = [u8];
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
     }
 }
 

@@ -4,7 +4,7 @@ use bytes::Bytes;
 use libipld::Cid;
 use serde::Serialize;
 
-use crate::{IpldReferences, IpldStore, StoreData, StoreResult};
+use crate::{IpldReferences, IpldStore, StoreResult};
 
 //--------------------------------------------------------------------------------------------------
 // Constants
@@ -54,18 +54,22 @@ impl IpldStore for DiskIpldStore {
         todo!()
     }
 
-    async fn put_bytes(&self, _bytes: Bytes) -> StoreResult<Cid> {
+    async fn put_bytes(&self, _bytes: impl Into<Bytes>) -> StoreResult<Cid> {
         todo!()
     }
 
-    async fn get<D>(&self, _cid: impl Into<Cid>) -> StoreResult<StoreData<D>>
+    async fn get<D>(&self, _cid: impl Into<Cid>) -> StoreResult<D>
     where
         D: serde::de::DeserializeOwned,
     {
         todo!()
     }
 
-    async fn get_references(&self, _cid: impl Into<Cid>) -> StoreResult<HashSet<Cid>> {
+    async fn get_bytes(&self, _cid: impl Into<Cid>) -> StoreResult<Bytes> {
+        todo!()
+    }
+
+    async fn references(&self, _cid: impl Into<Cid>) -> StoreResult<HashSet<Cid>> {
         todo!()
     }
 

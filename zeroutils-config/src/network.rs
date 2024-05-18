@@ -102,6 +102,7 @@ impl<D> NetworkConfig<'_, D>
 where
     D: PortDefaults,
 {
+    /// TODO: Use serde_valid instead of expecting the user to call this method.
     /// Validates the configuration.
     pub fn validate(&self) -> ConfigResult<()> {
         if self.peer_port == self.user_port {
@@ -112,12 +113,12 @@ where
     }
 
     /// Gets the peer address.
-    pub fn get_peer_address(&self) -> SocketAddr {
+    pub fn peer_address(&self) -> SocketAddr {
         SocketAddr::new(self.host, self.peer_port)
     }
 
     /// Gets the user address.
-    pub fn get_client_address(&self) -> SocketAddr {
+    pub fn user_address(&self) -> SocketAddr {
         SocketAddr::new(self.host, self.user_port)
     }
 }

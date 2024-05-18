@@ -37,7 +37,7 @@ pub(crate) const fn default_election_timeout_range() -> (u64, u64) {
 pub(crate) fn default_id() -> WrappedDidWebKey<'static> {
     let rng = &mut rand::thread_rng();
     let key = Ed25519KeyPair::generate(rng).unwrap();
-    DidWebKey::with_key(&key, Base::Base58Btc)
+    DidWebKey::from_key(&key, Base::Base58Btc)
         .into_owned()
         .into()
 }

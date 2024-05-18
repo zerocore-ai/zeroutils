@@ -14,7 +14,7 @@ use super::{Base, DidError};
 
 /// A trait for working with decentralized identifier (DID) types.
 pub trait Did: Display + FromStr {
-    // fn get_verification_method(&self) -> String;
+    // fn verification_method(&self) -> String;
     // fn fetch_did_document(&self) -> impl Future<Output = DidDocument>;
 }
 

@@ -14,7 +14,8 @@ use super::{
 // Types
 //--------------------------------------------------------------------------------------------------
 
-/// This is a type that implements the [DID Web Key (`did-wk`)][did-wk] method and is generic over the public key type.
+/// This is a type that implements the [DID Web Key (`did:wk`)][did-wk] method and is generic over the
+/// public key type.
 ///
 /// [`did:wk` method][did-wk] is designed for decentralized user-managed authentication. It encapsulates the
 /// `public_key` part and optionally includes a `locator_component` for finding the DID document. Without the
@@ -34,14 +35,14 @@ pub struct DidWebKey<P = ()> {
     pub(crate) locator_component: Option<LocatorComponent>,
 }
 
-/// This is a type that implements the [DID Web Key (`did-wk`)][did-wk] method and only supports a few key types.
+/// This is a type that implements the [DID Web Key (`did:wk`)][did-wk] method and only supports a few key types.
 ///
 /// [`did:wk` method][did-wk] is designed for decentralized user-managed authentication. It encapsulates the
 /// `public_key` part and optionally includes a `locator_component` for finding the DID document. Without the
 /// locator component, it functions similarly as a [`did:key`][did-key] identifier.
 ///
-/// Unlike [`DidWebKey`], this type is not generic over the public key type and only supports a few key types. It will
-/// fail to parse if the key type is not supported.
+/// Unlike [`DidWebKey`], this type is not generic over the public key type and only supports a few key types.
+/// It will fail to parse if the key type is not supported.
 ///
 /// `WrappedDidWebKey` is useful when you are deserializing from a did string representation but you are unsure of the
 /// exact key type to expect or when you just want to work with `did:wk` without any of the generic type business,
@@ -63,7 +64,7 @@ pub struct DidWebKey<P = ()> {
 ///
 /// [did-wk]: https://github.com/zerocore-ai/did-wk
 /// [did-key]: https://w3c-ccg.github.io/did-method-key/
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum WrappedDidWebKey<'a> {
     /// `ed25519` public key.
     Ed25519(Ed25519DidWebKey<'a>),
@@ -108,7 +109,7 @@ pub type Secp256k1DidWebKey<'a> = DidWebKey<Secp256k1PubKey<'a>>;
 
 impl DidWebKey {
     /// Creates a new [`DidWebKey`] from a key and base encoding.
-    pub fn with_key<K>(key: &K, base: Base) -> DidWebKey<<K as GetPublicKey>::PublicKey<'_>>
+    pub fn from_key<K>(key: &K, base: Base) -> DidWebKey<<K as GetPublicKey>::PublicKey<'_>>
     where
         K: GetPublicKey,
     {
@@ -117,6 +118,17 @@ impl DidWebKey {
             locator_component: None,
             base,
         }
+    }
+
+    /// Tries to create a new [`DidWebKey`] from a [`WrappedDidWebKey`].
+    pub fn from_wrapped_did_web_key<'a, P>(
+        wrapped_dwk: WrappedDidWebKey<'a>,
+    ) -> DidResult<DidWebKey<P>>
+    where
+        P: Clone + 'static,
+        'a: 'static,
+    {
+        wrapped_dwk.into_inner()
     }
 }
 
@@ -159,29 +171,49 @@ impl<P> DidWebKey<P> {
 
 impl<'a> WrappedDidWebKey<'a> {
     /// Creates a new [`WrappedDidWebKey`] from a [`WrappedPubKey`] and base encoding.
-    pub fn with_pub_key(pub_key: &'a WrappedPubKey<'a>, base: Base) -> WrappedDidWebKey<'a> {
+    pub fn from_wrapped_pub_key(
+        pub_key: &'a WrappedPubKey<'a>,
+        base: Base,
+    ) -> WrappedDidWebKey<'a> {
         match pub_key {
-            WrappedPubKey::Ed25519(wk) => WrappedDidWebKey::Ed25519(DidWebKey::with_key(wk, base)),
-            WrappedPubKey::P256(wk) => WrappedDidWebKey::P256(DidWebKey::with_key(wk, base)),
+            WrappedPubKey::Ed25519(wk) => WrappedDidWebKey::Ed25519(DidWebKey::from_key(wk, base)),
+            WrappedPubKey::P256(wk) => WrappedDidWebKey::P256(DidWebKey::from_key(wk, base)),
             WrappedPubKey::Secp256k1(wk) => {
-                WrappedDidWebKey::Secp256k1(DidWebKey::with_key(wk, base))
+                WrappedDidWebKey::Secp256k1(DidWebKey::from_key(wk, base))
             }
         }
     }
 
     /// Creates a new [`WrappedDidWebKey`] from a [`WrappedKeyPair`] and base encoding.
-    pub fn with_key_pair(key_pair: &'a WrappedKeyPair<'a>, base: Base) -> WrappedDidWebKey<'a> {
+    pub fn from_wrapped_key_pair(
+        key_pair: &'a WrappedKeyPair<'a>,
+        base: Base,
+    ) -> WrappedDidWebKey<'a> {
         match key_pair {
-            WrappedKeyPair::Ed25519(kp) => WrappedDidWebKey::Ed25519(DidWebKey::with_key(kp, base)),
-            WrappedKeyPair::P256(kp) => WrappedDidWebKey::P256(DidWebKey::with_key(kp, base)),
+            WrappedKeyPair::Ed25519(kp) => WrappedDidWebKey::Ed25519(DidWebKey::from_key(kp, base)),
+            WrappedKeyPair::P256(kp) => WrappedDidWebKey::P256(DidWebKey::from_key(kp, base)),
             WrappedKeyPair::Secp256k1(kp) => {
-                WrappedDidWebKey::Secp256k1(DidWebKey::with_key(kp, base))
+                WrappedDidWebKey::Secp256k1(DidWebKey::from_key(kp, base))
             }
         }
     }
 
-    /// Tries to create a [`WrappedDidWebKey`] from [`DidWebKey`] with some arbitrary public key `P`.
-    pub fn try_from<P>(
+    /// Tries to create a [`WrappedDidWebKey`] from a key, _`K`_ and a base encoding.
+    pub fn from_key<K>(key: &K, base: Base) -> DidResult<Self>
+    where
+        K: GetPublicKey,
+    {
+        let public_key = key.public_key().into_owned();
+        let did_wk = DidWebKey {
+            public_key,
+            base,
+            locator_component: None,
+        };
+        Self::from_did_web_key(did_wk)
+    }
+
+    /// Tries to create a [`WrappedDidWebKey`] from [`DidWebKey`] with some arbitrary public key, _`P`_.
+    pub fn from_did_web_key<P>(
         DidWebKey {
             public_key,
             base,
@@ -229,13 +261,13 @@ impl<'a> WrappedDidWebKey<'a> {
         T: Clone + 'static,
         'a: 'static,
     {
-        let any: Box<dyn Any> = match self {
+        let any_wk: Box<dyn Any> = match self {
             WrappedDidWebKey::Ed25519(wk) => Box::new(wk),
             WrappedDidWebKey::P256(wk) => Box::new(wk),
             WrappedDidWebKey::Secp256k1(wk) => Box::new(wk),
         };
 
-        let t = any
+        let t = any_wk
             .downcast::<T>()
             .map_err(|t| DidError::CastingFailed((*t).type_id()))?;
 
@@ -489,6 +521,24 @@ where
     }
 }
 
+impl<P> PartialOrd for DidWebKey<P>
+where
+    P: KeyEncode + PartialEq,
+{
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.to_string().cmp(&other.to_string()))
+    }
+}
+
+impl<P> Ord for DidWebKey<P>
+where
+    P: KeyEncode + Eq,
+{
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.to_string().cmp(&other.to_string())
+    }
+}
+
 //--------------------------------------------------------------------------------------------------
 // Tests
 //--------------------------------------------------------------------------------------------------
@@ -506,17 +556,17 @@ mod tests {
         let rng = &mut rand::thread_rng();
 
         let key_pair = Ed25519KeyPair::generate(rng)?;
-        let did_web_key = DidWebKey::with_key(&key_pair, Base::Base58Btc);
+        let did_web_key = DidWebKey::from_key(&key_pair, Base::Base58Btc);
 
         assert_eq!(did_web_key.public_key(), &key_pair.public_key());
 
         let key_pair = P256KeyPair::generate(rng)?;
-        let did_web_key = DidWebKey::with_key(&key_pair, Base::Base64);
+        let did_web_key = DidWebKey::from_key(&key_pair, Base::Base64);
 
         assert_eq!(did_web_key.public_key(), &key_pair.public_key());
 
         let key_pair = Secp256k1KeyPair::generate(rng)?;
-        let did_web_key = DidWebKey::with_key(&key_pair, Base::Base32Z);
+        let did_web_key = DidWebKey::from_key(&key_pair, Base::Base32Z);
 
         assert_eq!(did_web_key.public_key(), &key_pair.public_key());
 

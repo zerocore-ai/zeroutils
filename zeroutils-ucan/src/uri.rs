@@ -1,6 +1,13 @@
-use std::{ops::Deref, str::FromStr};
+use std::{cmp, fmt, str::FromStr};
 
+use fluent_uri::Uri;
+use lazy_static::lazy_static;
+use libipld::Cid;
+use regex::Regex;
 use serde::Serialize;
+use zeroutils_did_wk::WrappedDidWebKey;
+
+use crate::{UcanError, UcanResult};
 
 //--------------------------------------------------------------------------------------------------
 // Types
@@ -8,73 +15,289 @@ use serde::Serialize;
 
 /// Represents a Uniform Resource Identifier (URI) specifically tailored for use in UCAN tokens.
 ///
-/// This struct wraps a `fluent_uri::Uri<String>`, providing a standardized way to reference resources.
 /// URIs are fundamental in specifying the target of an ability within UCAN, distinguishing between
 /// different resources and actions across various services and platforms.
+///
+/// # Important
+///
+/// `did:wk` with locator components are not supported in URIs.
+#[allow(clippy::large_enum_variant)]
 #[derive(Debug, Clone)]
-pub struct Uri(fluent_uri::Uri<String>);
+pub enum ResourceUri<'a> {
+    /// A reference to a specific proof within the UCAN.
+    Reference(ProofReference<'a>),
+
+    /// Any other URI format.
+    Other(Uri<String>),
+}
+
+/// A reference to a proof within a UCAN, defined by various UCAN-specific URI schemes.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum ProofReference<'a> {
+    /// Represents the URI scheme `ucan:*`, which selects all possible provable UCANs.
+    AllUcans,
+
+    /// Represents the URI scheme `ucan://<did>/*`, selecting all proofs by a DID.
+    AllProofsByDid(WrappedDidWebKey<'a>),
+
+    /// Represents the URI scheme `ucan://<did>/<scheme>`, selecting all proofs by a DID and scheme.
+    AllProofsByDidAndScheme(WrappedDidWebKey<'a>, String),
+
+    /// Represents the URI scheme `ucan:./*`, selecting all proofs in the current UCAN.
+    AllProofsInCurrentUcan,
+
+    /// Represents the URI scheme `ucan:<cid>`, selecting a specific UCAN by its CID.
+    SpecificUcanByCid(Cid),
+}
+
+//--------------------------------------------------------------------------------------------------
+// Constants
+//--------------------------------------------------------------------------------------------------
+
+lazy_static! {
+    /// A regex pattern that matches the `ucan:*` URI, which selects all possible provable UCANs.
+    pub static ref UCAN_ALL_REGEX: Regex = Regex::new(r"^ucan:\*$").unwrap();
+
+    /// A regex pattern that matches the `ucan:./*` URI, which selects all proofs in the current UCAN.
+    pub static ref UCAN_CURRENT_REGEX: Regex = Regex::new(r"^ucan:\./\*$").unwrap();
+
+    /// A regex pattern that matches the `ucan://<did>/*` URI, which selects all proofs by a DID.
+    pub static ref UCAN_DID_REGEX: Regex = Regex::new(r"^ucan://([^/]+)/\*$").unwrap();
+
+    /// A regex pattern that matches the `ucan://<did>/<scheme>` URI, which selects all proofs by a DID and scheme.
+    pub static ref UCAN_DID_SCHEME_REGEX: Regex = Regex::new(r"^ucan://([^/]+)/([a-zA-Z][a-zA-Z0-9+\-\.]*)$").unwrap();
+
+    /// A regex pattern that matches the `ucan:<cid>` URI, which selects a specific UCAN by its CID.
+    pub static ref UCAN_CID_REGEX: Regex = Regex::new(r"^ucan:([^/]+)$").unwrap();
+}
+
+//--------------------------------------------------------------------------------------------------
+// Methods
+//--------------------------------------------------------------------------------------------------
+
+impl ResourceUri<'_> {
+    /// TODO: Implement this method.
+    pub fn allows(&self, _other: &ResourceUri<'_>) -> UcanResult<bool> {
+        unimplemented!()
+    }
+}
 
 //--------------------------------------------------------------------------------------------------
 // Trait Implementations
 //--------------------------------------------------------------------------------------------------
 
-impl From<fluent_uri::Uri<String>> for Uri {
-    fn from(uri: fluent_uri::Uri<String>) -> Self {
-        Uri(uri)
-    }
-}
-
-impl Deref for Uri {
-    type Target = fluent_uri::Uri<String>;
-
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
-
-impl FromStr for Uri {
-    type Err = fluent_uri::ParseError;
+impl FromStr for ProofReference<'_> {
+    type Err = UcanError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        fluent_uri::Uri::parse(s).map(|x| Uri(x.to_owned()))
+        if UCAN_ALL_REGEX.is_match(s) {
+            Ok(ProofReference::AllUcans)
+        } else if UCAN_CURRENT_REGEX.is_match(s) {
+            Ok(ProofReference::AllProofsInCurrentUcan)
+        } else if let Some(captures) = UCAN_DID_REGEX.captures(s) {
+            let did = captures.get(1).unwrap().as_str();
+            Ok(ProofReference::AllProofsByDid(WrappedDidWebKey::from_str(
+                did,
+            )?))
+        } else if let Some(captures) = UCAN_DID_SCHEME_REGEX.captures(s) {
+            let did = captures.get(1).unwrap().as_str();
+            let scheme = captures.get(2).unwrap().as_str();
+            Ok(ProofReference::AllProofsByDidAndScheme(
+                WrappedDidWebKey::from_str(did)?,
+                scheme.to_string(),
+            ))
+        } else if let Some(captures) = UCAN_CID_REGEX.captures(s) {
+            let cid = captures.get(1).unwrap().as_str();
+            Ok(ProofReference::SpecificUcanByCid(Cid::from_str(cid)?))
+        } else {
+            Err(UcanError::InvalidProofReference(s.to_string()))
+        }
     }
 }
 
-impl Serialize for Uri {
+impl<'a> FromStr for ResourceUri<'a> {
+    type Err = UcanError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        if s.starts_with("ucan:") {
+            ProofReference::from_str(s).map(ResourceUri::Reference)
+        } else {
+            Uri::parse_from(s.to_owned())
+                .map_err(|(_, e)| UcanError::UriParseError(e))
+                .map(ResourceUri::Other)
+        }
+    }
+}
+
+impl<'a> fmt::Display for ProofReference<'a> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            ProofReference::AllUcans => write!(f, "ucan:*"),
+            ProofReference::AllProofsByDid(did) => write!(f, "ucan://{}/*", did),
+            ProofReference::AllProofsByDidAndScheme(did, scheme) => {
+                write!(f, "ucan://{}/{}", did, scheme)
+            }
+            ProofReference::AllProofsInCurrentUcan => write!(f, "ucan:./*"),
+            ProofReference::SpecificUcanByCid(cid) => write!(f, "ucan:{}", cid),
+        }
+    }
+}
+
+impl<'a> fmt::Display for ResourceUri<'a> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            ResourceUri::Reference(pr) => write!(f, "{}", pr),
+            ResourceUri::Other(uri) => write!(f, "{}", uri),
+        }
+    }
+}
+
+impl Serialize for ResourceUri<'_> {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: serde::Serializer,
     {
-        self.as_str().serialize(serializer)
+        serializer.serialize_str(&self.to_string())
     }
 }
 
-impl<'de> serde::Deserialize<'de> for Uri {
-    fn deserialize<D>(deserializer: D) -> Result<Uri, D::Error>
+impl<'a, 'de> serde::Deserialize<'de> for ResourceUri<'a> {
+    fn deserialize<D>(deserializer: D) -> Result<ResourceUri<'a>, D::Error>
     where
         D: serde::Deserializer<'de>,
     {
         let s = String::deserialize(deserializer)?;
-        Uri::from_str(&s).map_err(serde::de::Error::custom)
+        ResourceUri::from_str(&s).map_err(serde::de::Error::custom)
     }
 }
 
-impl PartialOrd for Uri {
-    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        Some(self.cmp(other))
+impl PartialOrd for ResourceUri<'_> {
+    fn partial_cmp(&self, other: &Self) -> Option<cmp::Ordering> {
+        Some(self.to_string().cmp(&other.to_string()))
     }
 }
 
-impl Ord for Uri {
-    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        self.as_str().cmp(other.as_str())
+impl Ord for ResourceUri<'_> {
+    fn cmp(&self, other: &Self) -> cmp::Ordering {
+        self.to_string().cmp(&other.to_string())
     }
 }
 
-impl PartialEq for Uri {
+impl PartialEq for ResourceUri<'_> {
     fn eq(&self, other: &Self) -> bool {
-        self.as_str() == other.as_str()
+        match (self, other) {
+            (ResourceUri::Reference(pr1), ResourceUri::Reference(pr2)) => pr1 == pr2,
+            (ResourceUri::Other(uri1), ResourceUri::Other(uri2)) => uri1.as_str() == uri2.as_str(),
+            _ => false,
+        }
     }
 }
 
-impl Eq for Uri {}
+impl Eq for ResourceUri<'_> {}
+
+//--------------------------------------------------------------------------------------------------
+// Tests
+//--------------------------------------------------------------------------------------------------
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_uri_from_str() -> anyhow::Result<()> {
+        let uri = ResourceUri::from_str("ucan:*")?;
+        assert_eq!(uri, ResourceUri::Reference(ProofReference::AllUcans));
+
+        let uri = ResourceUri::from_str(
+            "ucan://did:wk:z6MkhZCL2zJsfqdqSLkGdocC3rkU436qYvK8bsnPdFCW1iXp/*",
+        )?;
+        assert_eq!(
+            uri,
+            ResourceUri::Reference(ProofReference::AllProofsByDid(WrappedDidWebKey::from_str(
+                "did:wk:z6MkhZCL2zJsfqdqSLkGdocC3rkU436qYvK8bsnPdFCW1iXp"
+            )?))
+        );
+
+        let uri = ResourceUri::from_str(
+            "ucan://did:wk:z6MkhZCL2zJsfqdqSLkGdocC3rkU436qYvK8bsnPdFCW1iXp/zerofs",
+        )?;
+        assert_eq!(
+            uri,
+            ResourceUri::Reference(ProofReference::AllProofsByDidAndScheme(
+                WrappedDidWebKey::from_str(
+                    "did:wk:z6MkhZCL2zJsfqdqSLkGdocC3rkU436qYvK8bsnPdFCW1iXp"
+                )?,
+                "zerofs".to_string()
+            ))
+        );
+
+        let uri = ResourceUri::from_str("ucan:./*")?;
+        assert_eq!(
+            uri,
+            ResourceUri::Reference(ProofReference::AllProofsInCurrentUcan)
+        );
+
+        let uri = ResourceUri::from_str(
+            "ucan:bafkreihogico5an3e2xy3fykalfwxxry7itbhfcgq6f47sif6d7w6uk2ze",
+        )?;
+        assert_eq!(
+            uri,
+            ResourceUri::Reference(ProofReference::SpecificUcanByCid(Cid::from_str(
+                "bafkreihogico5an3e2xy3fykalfwxxry7itbhfcgq6f47sif6d7w6uk2ze"
+            )?))
+        );
+
+        let uri = ResourceUri::from_str("https://example.com")?;
+        assert_eq!(
+            uri,
+            ResourceUri::Other(
+                Uri::parse_from("https://example.com".to_string())
+                    .map_err(|(_, e)| UcanError::UriParseError(e))?
+            )
+        );
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_uri_display() -> anyhow::Result<()> {
+        let uri = ResourceUri::Reference(ProofReference::AllUcans);
+        assert_eq!(uri.to_string(), "ucan:*");
+
+        let uri = ResourceUri::Reference(ProofReference::AllProofsByDid(
+            WrappedDidWebKey::from_str("did:wk:z6MkhZCL2zJsfqdqSLkGdocC3rkU436qYvK8bsnPdFCW1iXp")?,
+        ));
+        assert_eq!(
+            uri.to_string(),
+            "ucan://did:wk:z6MkhZCL2zJsfqdqSLkGdocC3rkU436qYvK8bsnPdFCW1iXp/*"
+        );
+
+        let uri = ResourceUri::Reference(ProofReference::AllProofsByDidAndScheme(
+            WrappedDidWebKey::from_str("did:wk:z6MkhZCL2zJsfqdqSLkGdocC3rkU436qYvK8bsnPdFCW1iXp")?,
+            "zerofs".to_string(),
+        ));
+        assert_eq!(
+            uri.to_string(),
+            "ucan://did:wk:z6MkhZCL2zJsfqdqSLkGdocC3rkU436qYvK8bsnPdFCW1iXp/zerofs"
+        );
+
+        let uri = ResourceUri::Reference(ProofReference::AllProofsInCurrentUcan);
+        assert_eq!(uri.to_string(), "ucan:./*");
+
+        let uri = ResourceUri::Reference(ProofReference::SpecificUcanByCid(Cid::from_str(
+            "bafkreihogico5an3e2xy3fykalfwxxry7itbhfcgq6f47sif6d7w6uk2ze",
+        )?));
+        assert_eq!(
+            uri.to_string(),
+            "ucan:bafkreihogico5an3e2xy3fykalfwxxry7itbhfcgq6f47sif6d7w6uk2ze"
+        );
+
+        let uri = ResourceUri::Other(
+            Uri::parse_from("https://example.com".to_string())
+                .map_err(|(_, e)| UcanError::UriParseError(e))?,
+        );
+        assert_eq!(uri.to_string(), "https://example.com");
+
+        Ok(())
+    }
+}

@@ -60,9 +60,17 @@ impl<'de> Deserialize<'de> for UcanHeader {
         #[derive(Deserialize)]
         struct Header {
             alg: JwsAlgorithm,
+            typ: String,
         }
 
         let header = Header::deserialize(deserializer)?;
+
+        if header.typ != TYPE {
+            return Err(serde::de::Error::custom(UcanError::UnsupportedTokenType(
+                header.typ,
+            )));
+        }
+
         Ok(UcanHeader { alg: header.alg })
     }
 }

@@ -10,7 +10,7 @@ use libipld::{
 use serde::{de::DeserializeOwned, Serialize};
 use tokio::sync::RwLock;
 
-use crate::{utils, Codec, IpldReferences, IpldStore, StoreData, StoreError, StoreResult};
+use crate::{utils, Codec, IpldReferences, IpldStore, StoreError, StoreResult};
 
 //--------------------------------------------------------------------------------------------------
 // Constants
@@ -30,7 +30,7 @@ pub const MEM_IPLD_STORE_BLOCK_SIZE: usize = 256 * 1024; // 256 KiB
 /// once their reference count drops to zero. It's designed for efficient in-memory storage and
 /// retrieval of blocks.
 ///
-/// Note: Currently, this implementation only supports DAG-CBOR codecs.
+/// NOTE: Currently, this implementation only supports DAG-CBOR codecs.
 #[derive(Debug, Clone)]
 pub struct MemoryIpldStore {
     blocks: Arc<RwLock<HashMap<Cid, (usize, Bytes)>>>,
@@ -89,7 +89,9 @@ impl IpldStore for MemoryIpldStore {
         Ok(cid)
     }
 
-    async fn put_bytes(&self, bytes: Bytes) -> StoreResult<Cid> {
+    async fn put_bytes(&self, bytes: impl Into<Bytes>) -> StoreResult<Cid> {
+        let bytes = bytes.into();
+
         // Construct the CID from the hash of the bytes.
         let cid = utils::make_cid(Codec::Raw, &bytes);
 
@@ -101,7 +103,7 @@ impl IpldStore for MemoryIpldStore {
         Ok(cid)
     }
 
-    async fn get<T>(&self, cid: impl Into<Cid>) -> StoreResult<StoreData<T>>
+    async fn get<T>(&self, cid: impl Into<Cid>) -> StoreResult<T>
     where
         T: DeserializeOwned,
     {
@@ -109,10 +111,13 @@ impl IpldStore for MemoryIpldStore {
         let blocks = self.blocks.read().await;
         match blocks.get(&cid) {
             Some((_, bytes)) => match cid.codec().try_into()? {
-                Codec::Raw => Ok(StoreData::Raw(bytes.clone())),
                 Codec::DagCbor => {
                     let data = serde_ipld_dagcbor::from_slice(bytes).map_err(StoreError::custom)?;
-                    Ok(StoreData::Ipld(data))
+                    Ok(data)
+                }
+                Codec::DagJson => {
+                    let data = serde_ipld_dagcbor::from_slice(bytes).map_err(StoreError::custom)?;
+                    Ok(data)
                 }
                 _ => Err(StoreError::UnsupportedCodec(cid.codec())),
             },
@@ -120,7 +125,16 @@ impl IpldStore for MemoryIpldStore {
         }
     }
 
-    async fn get_references(&self, cid: impl Into<Cid>) -> StoreResult<HashSet<Cid>> {
+    async fn get_bytes(&self, cid: impl Into<Cid>) -> StoreResult<Bytes> {
+        let cid = cid.into();
+        let blocks = self.blocks.read().await;
+        match blocks.get(&cid) {
+            Some((_, bytes)) => Ok(bytes.clone()),
+            None => Err(StoreError::BlockNotFound(cid)),
+        }
+    }
+
+    async fn references(&self, cid: impl Into<Cid>) -> StoreResult<HashSet<Cid>> {
         // TODO: Should figure out how to get references without deserializing the block. Think UCAN proof links.
         let cid = cid.into();
         let blocks = self.blocks.read().await;
@@ -212,8 +226,8 @@ mod tests {
 
         let data = vec![1, 2, 3, 4, 5];
         let cid = store.put_bytes(Bytes::from(data.clone())).await?;
-        let res: StoreData = store.get(cid).await?;
-        assert_eq!(res, StoreData::Raw(Bytes::from(data)));
+        let res = store.get_bytes(cid).await?;
+        assert_eq!(res, Bytes::from(data));
 
         //================= IPLD =================
 
@@ -227,7 +241,7 @@ mod tests {
 
         let cid = store.put(data.clone()).await?;
         let res = store.get::<fixture::Directory>(cid).await?;
-        assert_eq!(res, StoreData::Ipld(data));
+        assert_eq!(res, data);
 
         Ok(())
     }
@@ -245,7 +259,7 @@ mod tests {
         };
 
         let cid = store.put(data.clone()).await?;
-        let res = store.get_references(cid).await?;
+        let res = store.references(cid).await?;
         let expected = data.entries.iter().cloned().collect::<HashSet<_>>();
 
         assert_eq!(res, expected);

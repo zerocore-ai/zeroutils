@@ -2,42 +2,51 @@ use std::time::SystemTime;
 
 use libipld::Cid;
 use serde_json::Value;
-use zeroutils_did_wk::WrappedDidWebKey;
-use zeroutils_key::{JwsAlgName, Sign};
+use zeroutils_did_wk::{Base, WrappedDidWebKey};
+use zeroutils_key::{GetPublicKey, IntoOwned, JwsAlgName, Sign};
 use zeroutils_store::{IpldStore, PlaceholderStore};
 
-use crate::{
-    SignedUcan, Ucan, UcanAbilities, UcanCapabilities, UcanFacts, UcanPayload, UcanProofs,
-    UcanResult, Uri,
-};
+use crate::{Capabilities, Facts, Proofs, SignedUcan, Ucan, UcanPayload, UcanResult};
 
 //--------------------------------------------------------------------------------------------------
 // Types
 //--------------------------------------------------------------------------------------------------
 
 /// A builder for creating UCAN (User-Controlled Authorization Network) tokens.
-pub struct UcanBuilder<I = (), A = (), E = (), C = (), S = PlaceholderStore> {
+pub struct UcanBuilder<'a, I = (), A = (), E = (), C = (), S = PlaceholderStore>
+where
+    S: IpldStore,
+{
     issuer: I,
     audience: A,
     expiration: E,
     not_before: Option<SystemTime>,
     nonce: Option<String>,
-    facts: Option<UcanFacts>,
+    facts: Option<Facts>,
     capabilities: C,
-    proofs: UcanProofs,
-    store: S,
+    proofs: Proofs<'a, S>,
+    store: &'a S,
 }
+
+/// A builder for creating UCAN (User-Controlled Authorization Network) tokens.
+pub type DefaultUcanBuilder<'a> = UcanBuilder<'a, (), (), (), (), PlaceholderStore>;
 
 //--------------------------------------------------------------------------------------------------
 // Methods
 //--------------------------------------------------------------------------------------------------
 
-impl<I, A, E, C, S> UcanBuilder<I, A, E, C, S> {
+impl<'a, I, A, E, C, S> UcanBuilder<'a, I, A, E, C, S>
+where
+    S: IpldStore,
+{
     /// Sets the issuer of the UCAN.
-    pub fn issuer<'a>(
+    ///
+    /// This can be omitted from the builder call chain if `.sign` is called as the issuer will be
+    /// derived from the keypair.
+    pub fn issuer<'b>(
         self,
-        issuer: impl Into<WrappedDidWebKey<'a>>,
-    ) -> UcanBuilder<WrappedDidWebKey<'a>, A, E, C, S> {
+        issuer: impl Into<WrappedDidWebKey<'b>>,
+    ) -> UcanBuilder<'a, WrappedDidWebKey<'b>, A, E, C, S> {
         UcanBuilder {
             issuer: issuer.into(),
             audience: self.audience,
@@ -52,10 +61,10 @@ impl<I, A, E, C, S> UcanBuilder<I, A, E, C, S> {
     }
 
     /// Sets the audience (recipient) of the UCAN.
-    pub fn audience<'a>(
+    pub fn audience<'b>(
         self,
-        audience: impl Into<WrappedDidWebKey<'a>>,
-    ) -> UcanBuilder<I, WrappedDidWebKey<'a>, E, C, S> {
+        audience: impl Into<WrappedDidWebKey<'b>>,
+    ) -> UcanBuilder<'a, I, WrappedDidWebKey<'b>, E, C, S> {
         UcanBuilder {
             issuer: self.issuer,
             audience: audience.into(),
@@ -72,12 +81,12 @@ impl<I, A, E, C, S> UcanBuilder<I, A, E, C, S> {
     /// Sets the expiration time of the UCAN.
     pub fn expiration(
         self,
-        expiration: Option<SystemTime>,
-    ) -> UcanBuilder<I, A, Option<SystemTime>, C, S> {
+        expiration: impl Into<Option<SystemTime>>,
+    ) -> UcanBuilder<'a, I, A, Option<SystemTime>, C, S> {
         UcanBuilder {
             issuer: self.issuer,
             audience: self.audience,
-            expiration,
+            expiration: expiration.into(),
             not_before: self.not_before,
             nonce: self.nonce,
             facts: self.facts,
@@ -114,8 +123,8 @@ impl<I, A, E, C, S> UcanBuilder<I, A, E, C, S> {
     /// Sets the capabilities or permissions granted by the UCAN.
     pub fn capabilities(
         self,
-        capabilities: impl IntoIterator<Item = (Uri, UcanAbilities)>,
-    ) -> UcanBuilder<I, A, E, UcanCapabilities, S> {
+        capabilities: Capabilities<'a>,
+    ) -> UcanBuilder<I, A, E, Capabilities, S> {
         UcanBuilder {
             issuer: self.issuer,
             audience: self.audience,
@@ -123,14 +132,14 @@ impl<I, A, E, C, S> UcanBuilder<I, A, E, C, S> {
             not_before: self.not_before,
             nonce: self.nonce,
             facts: self.facts,
-            capabilities: capabilities.into_iter().collect(),
+            capabilities,
             proofs: self.proofs,
             store: self.store,
         }
     }
 
     /// Changes the store used for handling IPLD data.
-    pub fn store<T>(self, store: T) -> UcanBuilder<I, A, E, C, T>
+    pub fn store<T>(self, store: &'a T) -> UcanBuilder<'a, I, A, E, C, T>
     where
         T: IpldStore,
     {
@@ -142,20 +151,26 @@ impl<I, A, E, C, S> UcanBuilder<I, A, E, C, S> {
             nonce: self.nonce,
             facts: self.facts,
             capabilities: self.capabilities,
-            proofs: self.proofs,
+            proofs: self.proofs.use_store(store),
             store,
         }
     }
 }
 
-impl<'a, I>
-    UcanBuilder<WrappedDidWebKey<'a>, WrappedDidWebKey<'a>, Option<SystemTime>, UcanCapabilities, I>
+impl<'a, S>
+    UcanBuilder<
+        'a,
+        WrappedDidWebKey<'a>,
+        WrappedDidWebKey<'a>,
+        Option<SystemTime>,
+        Capabilities<'a>,
+        S,
+    >
 where
-    I: IpldStore,
+    S: IpldStore,
 {
     /// Builds a UCAN from the specified components.
-    pub fn build(self) -> Ucan<'a, I, ()> {
-        // TODO: Verify times are not stale and other necessary fields
+    pub fn build(self) -> Ucan<'a, S, ()> {
         let payload = UcanPayload {
             issuer: self.issuer,
             audience: self.audience,
@@ -168,23 +183,45 @@ where
             store: self.store,
         };
 
-        Ucan::from_parts((), payload, ())
+        Ucan::from_parts((), payload, ()) // TODO: call ucan.validate() here
     }
+}
 
+impl<'a, S> UcanBuilder<'a, (), WrappedDidWebKey<'a>, Option<SystemTime>, Capabilities<'a>, S>
+where
+    S: IpldStore,
+{
     /// Signs the built UCAN with a given keypair.
-    pub fn sign<K>(self, keypair: &K) -> UcanResult<SignedUcan<'a, I>>
+    pub fn sign<K>(self, keypair: &K) -> UcanResult<SignedUcan<'a, S>>
     where
-        K: Sign + JwsAlgName,
+        K: Sign + JwsAlgName + GetPublicKey + IntoOwned,
     {
-        let ucan = self.build().use_alg(keypair.alg());
-        let encoded = ucan.to_string();
-        let signature = keypair.sign(encoded.as_bytes())?;
+        let issuer_did = WrappedDidWebKey::from_key(keypair, Base::Base58Btc)?;
+        self.issuer(issuer_did)
+            .build()
+            .use_alg(keypair.alg())
+            .sign(keypair)
+    }
+}
 
-        Ok(Ucan {
-            payload: ucan.payload,
-            header: ucan.header,
-            signature: signature.into(),
-        })
+impl<'a, S>
+    UcanBuilder<
+        'a,
+        WrappedDidWebKey<'a>,
+        WrappedDidWebKey<'a>,
+        Option<SystemTime>,
+        Capabilities<'a>,
+        S,
+    >
+where
+    S: IpldStore,
+{
+    /// Signs the built UCAN with a given keypair.
+    pub fn sign<K>(self, keypair: &K) -> UcanResult<SignedUcan<'a, S>>
+    where
+        K: Sign + JwsAlgName + GetPublicKey,
+    {
+        self.build().use_alg(keypair.alg()).sign(keypair) // TODO: call ucan.validate() here
     }
 }
 
@@ -192,7 +229,7 @@ where
 // Trait Implementations
 //--------------------------------------------------------------------------------------------------
 
-impl Default for UcanBuilder<(), (), (), (), PlaceholderStore> {
+impl<'a> Default for UcanBuilder<'a, (), (), (), (), PlaceholderStore> {
     fn default() -> Self {
         UcanBuilder {
             issuer: (),
@@ -202,8 +239,8 @@ impl Default for UcanBuilder<(), (), (), (), PlaceholderStore> {
             nonce: None,
             facts: None,
             capabilities: (),
-            proofs: UcanProofs::default(),
-            store: PlaceholderStore,
+            proofs: Proofs::<'a, PlaceholderStore>::default(),
+            store: &PlaceholderStore,
         }
     }
 }
@@ -217,7 +254,10 @@ mod tests {
     use std::{str::FromStr, time::Duration};
 
     use anyhow::Ok;
+    use zeroutils_key::{Ed25519KeyPair, KeyPairGenerate};
     use zeroutils_store::PlaceholderStore;
+
+    use crate::caps;
 
     use super::*;
 
@@ -228,13 +268,13 @@ mod tests {
         let ucan = UcanBuilder::default()
             .issuer("did:wk:b44aqepqvrvaix2aosv2oluhoa3kf7yan6xevmn2asn3scuev2iydukkv")
             .audience("did:wk:b5ua5l4wgcp46zrtn3ihjjmu5gbyhusmyt5bianl5ov2yrvj7wnh4vti")
-            .expiration(Some(now + Duration::from_secs(360_000)))
+            .expiration(now + Duration::from_secs(360_000))
             .not_before(now)
             .nonce("1100263a4012")
             .facts(vec![])
-            .capabilities(vec![])
+            .capabilities(caps!())
             .proofs(vec![])
-            .store(PlaceholderStore)
+            .store(&PlaceholderStore)
             .build();
 
         assert_eq!(
@@ -255,10 +295,24 @@ mod tests {
         );
         assert_eq!(ucan.payload.not_before, Some(now));
         assert_eq!(ucan.payload.nonce, Some("1100263a4012".to_string()));
-        assert_eq!(ucan.payload.facts, Some(UcanFacts::default()));
-        assert_eq!(ucan.payload.capabilities, UcanCapabilities::default());
-        assert_eq!(ucan.payload.proofs, UcanProofs::default());
-        assert_eq!(ucan.payload.store, PlaceholderStore);
+        assert_eq!(ucan.payload.facts, Some(Facts::default()));
+        assert_eq!(ucan.payload.capabilities, Capabilities::default());
+        assert_eq!(ucan.payload.proofs, Proofs::default());
+        assert_eq!(ucan.payload.store, &PlaceholderStore);
+
+        // Sign the UCAN
+        let ucan = UcanBuilder::default()
+            .issuer("did:wk:b44aqepqvrvaix2aosv2oluhoa3kf7yan6xevmn2asn3scuev2iydukkv")
+            .audience("did:wk:b5ua5l4wgcp46zrtn3ihjjmu5gbyhusmyt5bianl5ov2yrvj7wnh4vti")
+            .expiration(Some(now + Duration::from_secs(360_000)))
+            .not_before(now)
+            .nonce("1100263a4012")
+            .facts(vec![])
+            .capabilities(caps!())
+            .proofs(vec![])
+            .sign(&Ed25519KeyPair::generate(&mut rand::thread_rng())?)?;
+
+        assert!(ucan.validate().is_ok());
 
         Ok(())
     }

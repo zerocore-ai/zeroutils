@@ -18,7 +18,7 @@ use super::{DidError, RE_IPLITERAL, RE_IPV4ADDR, RE_PATH_ABEMPTY, RE_REGNAME};
 /// To get the DID document, this would get resolved to:
 ///
 /// `https://steve.zerocore.ai/public/.well-known/did.json`.
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize, PartialOrd, Ord)]
 pub struct LocatorComponent {
     /// The host part of the component.
     host: Host,
@@ -38,7 +38,7 @@ pub struct LocatorComponent {
 /// This is the `host` rule from [RFC 3986][ref].
 ///
 /// [ref]: https://datatracker.ietf.org/doc/html/rfc3986#section-3.2.2
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum Host {
     /// A domain name.
     Domain(String),
@@ -57,7 +57,7 @@ pub enum Host {
 /// NOTE: Path can be an empty string.
 ///
 /// [ref]: https://datatracker.ietf.org/doc/html/rfc3986#section-3.3
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize, PartialOrd, Ord)]
 pub struct Path(String);
 
 //--------------------------------------------------------------------------------------------------
