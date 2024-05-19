@@ -1,4 +1,4 @@
-use std::{collections::HashSet, future::Future};
+use std::{collections::HashSet, future::Future, iter};
 
 use bytes::Bytes;
 use libipld::Cid;
@@ -55,8 +55,8 @@ pub trait IpldStore {
     /// Gets the direct CID references contained in a given IPLD data.
     fn references(&self, cid: impl Into<Cid>) -> impl Future<Output = StoreResult<HashSet<Cid>>>;
 
-    /// Returns the codec used to encode the data stored in the store.
-    fn supported_codec(&self) -> Codec;
+    /// Returns the codecs supported by the store.
+    fn supported_codecs(&self) -> HashSet<Codec>;
 
     // /// Tries to delete all blocks reachable from the given `cid` as long as the blocks are not reachable to other blocks
     // /// outside the given `cid` and its references.
@@ -69,7 +69,7 @@ pub trait IpldStore {
 }
 
 /// The different codecs supported by the IPLD store.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Codec {
     /// Raw bytes.
     Raw,
@@ -89,34 +89,87 @@ pub enum Codec {
 /// [cid]: https://docs.ipfs.tech/concepts/content-addressing/
 pub trait IpldReferences {
     /// Returns all the direct CID references the type has to other data.
-    fn references(&self) -> impl Iterator<Item = &Cid>;
+    fn references<'a>(&'a self) -> Box<dyn Iterator<Item = &'a Cid> + 'a>;
+}
+
+//--------------------------------------------------------------------------------------------------
+// Macros
+//--------------------------------------------------------------------------------------------------
+
+macro_rules! impl_ipld_references {
+    (($($name:ident),+)) => {
+        impl<$($name),+> IpldReferences for ($($name,)+)
+        where
+            $($name: IpldReferences,)*
+        {
+            fn references<'a>(&'a self) -> Box<dyn Iterator<Item = &'a Cid> + 'a> {
+                #[allow(non_snake_case)]
+                let ($($name,)+) = self;
+                Box::new(
+                    Vec::new().into_iter()
+                    $(.chain($name.references()))+
+                )
+            }
+        }
+    };
+    ($type:ty) => {
+        impl IpldReferences for $type {
+            fn references<'a>(&'a self) -> Box<dyn Iterator<Item = &'a Cid> + 'a> {
+                Box::new([].iter())
+            }
+        }
+    }
 }
 
 //--------------------------------------------------------------------------------------------------
 // Trait Implementations
 //--------------------------------------------------------------------------------------------------
 
-impl IpldReferences for () {
-    fn references(&self) -> impl Iterator<Item = &Cid> {
-        [].iter()
-    }
-}
+// Nothing
+impl_ipld_references!(());
 
-impl IpldReferences for Vec<u8> {
-    fn references(&self) -> impl Iterator<Item = &Cid> {
-        [].iter()
-    }
-}
+// Scalars
+impl_ipld_references!(bool);
+impl_ipld_references!(u8);
+impl_ipld_references!(u16);
+impl_ipld_references!(u32);
+impl_ipld_references!(u64);
+impl_ipld_references!(u128);
+impl_ipld_references!(usize);
+impl_ipld_references!(i8);
+impl_ipld_references!(i16);
+impl_ipld_references!(i32);
+impl_ipld_references!(i64);
+impl_ipld_references!(i128);
+impl_ipld_references!(isize);
+impl_ipld_references!(f32);
+impl_ipld_references!(f64);
 
-impl IpldReferences for &[u8] {
-    fn references(&self) -> impl Iterator<Item = &Cid> {
-        [].iter()
-    }
-}
+// Containers
+impl_ipld_references!(Vec<u8>);
+impl_ipld_references!(&[u8]);
+impl_ipld_references!(Bytes);
+impl_ipld_references!(String);
+impl_ipld_references!(&str);
 
-impl IpldReferences for Bytes {
-    fn references(&self) -> impl Iterator<Item = &Cid> {
-        [].iter()
+// Tuples
+impl_ipld_references!((A, B));
+impl_ipld_references!((A, B, C));
+impl_ipld_references!((A, B, C, D));
+impl_ipld_references!((A, B, C, D, E));
+impl_ipld_references!((A, B, C, D, E, F));
+impl_ipld_references!((A, B, C, D, E, F, G));
+impl_ipld_references!((A, B, C, D, E, F, G, H));
+
+impl<T> IpldReferences for Option<T>
+where
+    T: IpldReferences,
+{
+    fn references<'a>(&'a self) -> Box<dyn Iterator<Item = &'a Cid> + 'a> {
+        match self {
+            Some(value) => Box::new(value.references()),
+            None => Box::new(iter::empty()),
+        }
     }
 }
 

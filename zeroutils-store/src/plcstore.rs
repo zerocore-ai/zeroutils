@@ -44,7 +44,7 @@ impl IpldStore for PlaceholderStore {
         unimplemented!("placeholder")
     }
 
-    fn supported_codec(&self) -> Codec {
+    fn supported_codecs(&self) -> HashSet<Codec> {
         unimplemented!("placeholder")
     }
 }

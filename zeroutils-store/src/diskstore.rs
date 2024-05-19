@@ -4,7 +4,7 @@ use bytes::Bytes;
 use libipld::Cid;
 use serde::Serialize;
 
-use crate::{IpldReferences, IpldStore, StoreResult};
+use crate::{Codec, IpldReferences, IpldStore, StoreResult};
 
 //--------------------------------------------------------------------------------------------------
 // Constants
@@ -22,7 +22,7 @@ pub const DISK_IPLD_STORE_BLOCK_SIZE: usize = 256 * 1024; // 256 KiB
 //--------------------------------------------------------------------------------------------------
 
 /// A block store that stores blocks on disk.
-pub struct DiskIpldStore {
+pub struct DiskStore {
     /// The base directory where the blocks are stored.
     ///
     /// Default is set to `~/.zerofs`.
@@ -33,8 +33,8 @@ pub struct DiskIpldStore {
 // Methods
 //--------------------------------------------------------------------------------------------------
 
-impl DiskIpldStore {
-    /// Creates a new `DiskIpldStore` with the given base directory.
+impl DiskStore {
+    /// Creates a new `DiskStore` with the given base directory.
     pub fn new(base_dir: impl Into<PathBuf>) -> Self {
         Self {
             _base_dir: base_dir.into(),
@@ -46,7 +46,7 @@ impl DiskIpldStore {
 // Trait Implementations
 //--------------------------------------------------------------------------------------------------
 
-impl IpldStore for DiskIpldStore {
+impl IpldStore for DiskStore {
     async fn put<T>(&self, _data: T) -> StoreResult<Cid>
     where
         T: Serialize + IpldReferences,
@@ -73,7 +73,7 @@ impl IpldStore for DiskIpldStore {
         todo!()
     }
 
-    fn supported_codec(&self) -> crate::Codec {
+    fn supported_codecs(&self) -> HashSet<Codec> {
         todo!()
     }
 }

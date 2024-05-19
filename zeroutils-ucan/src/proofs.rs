@@ -209,7 +209,7 @@ mod tests {
 
     use zeroutils_did_wk::{Base, WrappedDidWebKey};
     use zeroutils_key::{Ed25519KeyPair, KeyPairGenerate};
-    use zeroutils_store::MemoryIpldStore;
+    use zeroutils_store::MemoryStore;
 
     use crate::{caps, Ucan};
 
@@ -230,7 +230,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_proof_equality() -> anyhow::Result<()> {
-        let store = MemoryIpldStore::default();
+        let store = MemoryStore::default();
         let issuer_key = Ed25519KeyPair::generate(&mut rand::thread_rng())?;
         let audience_key = Ed25519KeyPair::generate(&mut rand::thread_rng())?;
 

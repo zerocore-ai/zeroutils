@@ -6,9 +6,10 @@
 mod diskstore;
 mod dualstore;
 mod error;
+mod ipldstore;
+mod lrustore;
 mod memstore;
 mod plcstore;
-mod store;
 pub(crate) mod utils;
 
 //--------------------------------------------------------------------------------------------------
@@ -18,9 +19,10 @@ pub(crate) mod utils;
 pub use diskstore::*;
 pub use dualstore::*;
 pub use error::*;
+pub use ipldstore::*;
+pub use lrustore::*;
 pub use memstore::*;
 pub use plcstore::*;
-pub use store::*;
 
 //--------------------------------------------------------------------------------------------------
 // Re-Exports

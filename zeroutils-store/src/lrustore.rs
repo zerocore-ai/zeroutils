@@ -1,12 +1,10 @@
-use std::{
-    collections::{HashMap, HashSet},
-    sync::Arc,
-};
+use std::{collections::HashSet, num::NonZeroUsize, sync::Arc};
 
 use bytes::Bytes;
 use libipld::{
     cbor::DagCborCodec, codec::Codec as C, json::DagJsonCodec, pb::DagPbCodec, Cid, Ipld,
 };
+use lru::LruCache;
 use serde::{de::DeserializeOwned, Serialize};
 use tokio::sync::RwLock;
 
@@ -16,51 +14,35 @@ use crate::{utils, Codec, IpldReferences, IpldStore, StoreError, StoreResult};
 // Constants
 //--------------------------------------------------------------------------------------------------
 
-/// The maximum size of a block in the in-memory IPLD store.
+/// The maximum size of a block in the LRU store.
 // TODO: Not supported yet. In the future, we will use this to break big IPLD blocks into smaller blocks.
-pub const MEM_STORE_BLOCK_SIZE: usize = 256 * 1024; // 256 KiB
+pub const LRU_STORE_BLOCK_SIZE: usize = 256 * 1024; // 256 KiB
 
 //--------------------------------------------------------------------------------------------------
 // Types
 //--------------------------------------------------------------------------------------------------
 
-/// An in-memory storage for IPLD blocks with reference counting.
+/// A Least Recently Used (LRU) cache store for storing IPLD blocks.
 ///
-/// This store maintains a reference count for each stored block. Blocks are eligible for removal
-/// once their reference count drops to zero. It's designed for efficient in-memory storage and
-/// retrieval of blocks.
-///
-/// NOTE: Currently, this implementation only supports DAG-CBOR codecs.
-#[derive(Debug, Clone)]
-pub struct MemoryStore {
-    blocks: Arc<RwLock<HashMap<Cid, (usize, Bytes)>>>,
+/// The `LruStore` struct provides an in-memory storage mechanism for IPLD blocks with a specified capacity.
+/// It leverages an LRU cache to manage the stored blocks, evicting the least recently used blocks when the
+/// capacity is reached.
+pub struct LruStore {
+    blocks: Arc<RwLock<LruCache<Cid, Bytes>>>,
 }
 
 //--------------------------------------------------------------------------------------------------
 // Methods
 //--------------------------------------------------------------------------------------------------
 
-impl MemoryStore {
-    async fn inc_refs(&self, cids: impl Iterator<Item = &Cid>) {
-        for cid in cids {
-            if let Some((size, _)) = self.blocks.write().await.get_mut(cid) {
-                *size += 1;
-            }
+impl LruStore {
+    /// Creates a new `LruStore` with the given capacity.
+    pub fn new(capacity: usize) -> Self {
+        Self {
+            blocks: Arc::new(RwLock::new(LruCache::new(
+                NonZeroUsize::new(capacity).expect("capacity must be non-zero"),
+            ))),
         }
-    }
-
-    async fn _dec_refs(&self, cids: impl Iterator<Item = &Cid>) -> Vec<Cid> {
-        let mut to_remove = Vec::new();
-        for cid in cids {
-            if let Some((size, _)) = self.blocks.write().await.get_mut(cid) {
-                *size -= 1;
-                if *size == 0 {
-                    to_remove.push(*cid);
-                }
-            }
-        }
-
-        to_remove
     }
 }
 
@@ -68,7 +50,7 @@ impl MemoryStore {
 // Trait Implementations
 //--------------------------------------------------------------------------------------------------
 
-impl IpldStore for MemoryStore {
+impl IpldStore for LruStore {
     async fn put<T>(&self, data: T) -> StoreResult<Cid>
     where
         T: Serialize + IpldReferences,
@@ -81,9 +63,8 @@ impl IpldStore for MemoryStore {
         let cid = utils::make_cid(Codec::DagCbor, &bytes);
 
         // Insert the block if it doesn't already exist.
-        if self.blocks.read().await.get(&cid).is_none() {
-            self.blocks.write().await.insert(cid, (1, bytes));
-            self.inc_refs(data.references()).await; // Increment reference counts of referenced blocks.
+        if self.blocks.write().await.get(&cid).is_none() {
+            self.blocks.write().await.put(cid, bytes);
         }
 
         Ok(cid)
@@ -96,8 +77,8 @@ impl IpldStore for MemoryStore {
         let cid = utils::make_cid(Codec::Raw, &bytes);
 
         // Insert the block if it doesn't already exist.
-        if self.blocks.read().await.get(&cid).is_none() {
-            self.blocks.write().await.insert(cid, (1, bytes));
+        if self.blocks.write().await.get(&cid).is_none() {
+            self.blocks.write().await.put(cid, bytes);
         }
 
         Ok(cid)
@@ -108,9 +89,9 @@ impl IpldStore for MemoryStore {
         T: DeserializeOwned,
     {
         let cid = cid.into();
-        let blocks = self.blocks.read().await;
+        let mut blocks = self.blocks.write().await;
         match blocks.get(&cid) {
-            Some((_, bytes)) => match cid.codec().try_into()? {
+            Some(bytes) => match cid.codec().try_into()? {
                 Codec::DagCbor => {
                     let data = serde_ipld_dagcbor::from_slice(bytes).map_err(StoreError::custom)?;
                     Ok(data)
@@ -123,9 +104,9 @@ impl IpldStore for MemoryStore {
 
     async fn get_bytes(&self, cid: impl Into<Cid>) -> StoreResult<Bytes> {
         let cid = cid.into();
-        let blocks = self.blocks.read().await;
+        let mut blocks = self.blocks.write().await;
         match blocks.get(&cid) {
-            Some((_, bytes)) => Ok(bytes.clone()),
+            Some(bytes) => Ok(bytes.clone()),
             None => Err(StoreError::BlockNotFound(cid)),
         }
     }
@@ -133,9 +114,9 @@ impl IpldStore for MemoryStore {
     async fn references(&self, cid: impl Into<Cid>) -> StoreResult<HashSet<Cid>> {
         // TODO: Should figure out how to get references without deserializing the block. Think UCAN proof links.
         let cid = cid.into();
-        let blocks = self.blocks.read().await;
+        let mut blocks = self.blocks.write().await;
         match blocks.get(&cid) {
-            Some((_, bytes)) => match cid.codec().try_into()? {
+            Some(bytes) => match cid.codec().try_into()? {
                 Codec::Raw => Ok(HashSet::new()),
                 Codec::DagCbor => {
                     let mut cids = HashSet::new();
@@ -170,14 +151,6 @@ impl IpldStore for MemoryStore {
         let mut codecs = HashSet::new();
         codecs.insert(Codec::DagCbor);
         codecs
-    }
-}
-
-impl Default for MemoryStore {
-    fn default() -> Self {
-        MemoryStore {
-            blocks: Arc::new(RwLock::new(HashMap::new())),
-        }
     }
 }
 
@@ -218,18 +191,18 @@ mod tests {
 
     #[tokio::test]
     async fn test_memory_store_put_and_get() -> anyhow::Result<()> {
-        let store = MemoryStore::default();
+        let store = LruStore::new(2);
 
         //================== Raw ==================
 
-        let data = vec![1, 2, 3, 4, 5];
-        let cid = store.put_bytes(Bytes::from(data.clone())).await?;
-        let res = store.get_bytes(cid).await?;
-        assert_eq!(res, Bytes::from(data));
+        let data_0 = vec![1, 2, 3, 4, 5];
+        let cid_0 = store.put_bytes(Bytes::from(data_0.clone())).await?;
+        let res = store.get_bytes(cid_0).await?;
+        assert_eq!(res, Bytes::from(data_0));
 
         //================= IPLD =================
 
-        let data = fixture::Directory {
+        let data_1 = fixture::Directory {
             name: "root".to_string(),
             entries: vec![
                 utils::make_cid(Codec::Raw, &[1, 2, 3]),
@@ -237,16 +210,28 @@ mod tests {
             ],
         };
 
-        let cid = store.put(data.clone()).await?;
-        let res = store.get::<fixture::Directory>(cid).await?;
-        assert_eq!(res, data);
+        let cid_1 = store.put(data_1.clone()).await?;
+        let res = store.get::<fixture::Directory>(cid_1).await?;
+        assert_eq!(res, data_1);
+
+        //================= Least Recently Used Eviction =================
+
+        let data_2 = vec![7, 8, 9, 10, 11];
+        let cid_2 = store.put_bytes(Bytes::from(data_2.clone())).await?; // This should evict the first block.
+
+        assert_eq!(
+            store.get_bytes(cid_0).await,
+            Err(StoreError::BlockNotFound(cid_0))
+        );
+        assert_eq!(store.get::<fixture::Directory>(cid_1).await?, data_1);
+        assert_eq!(store.get_bytes(cid_2).await?, Bytes::from(data_2));
 
         Ok(())
     }
 
     #[tokio::test]
     async fn test_memory_store_get_references() -> anyhow::Result<()> {
-        let store = MemoryStore::default();
+        let store = LruStore::new(2);
 
         let data = fixture::Directory {
             name: "root".to_string(),

@@ -189,8 +189,16 @@ where
     /// Resolves the capabilities of a UCAN to their final form.
     pub fn resolve_capabilities(&mut self) -> UcanResult<()> {
         self.validate()?;
-
         todo!("resolve capabilities")
+    }
+
+    /// TODO: Implement this method.
+    pub fn allows<'b>(
+        &self,
+        _resource: impl TryInto<ResourceUri<'b>>,
+        _ability: impl TryInto<Ability>,
+    ) -> UcanResult<bool> {
+        todo!()
     }
 
     /// Verifies the signature of the current UCAN against the public key of the issuer.
@@ -213,15 +221,6 @@ where
             .verify(unsigned_ucan.to_string().as_bytes(), self.signature())?;
 
         Ok(())
-    }
-
-    /// TODO: Implement this method.
-    pub fn allows<'b>(
-        &self,
-        _resource: impl TryInto<ResourceUri<'b>>,
-        _ability: impl TryInto<Ability>,
-    ) -> UcanResult<bool> {
-        todo!()
     }
 }
 
