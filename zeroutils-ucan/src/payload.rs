@@ -64,10 +64,9 @@ where
 // Types: Serde
 //--------------------------------------------------------------------------------------------------
 
-#[derive(Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 struct UcanPayloadSerde<'a> {
-    #[serde(skip_deserializing)]
-    ucv: &'static str,
+    ucv: String,
 
     iss: String,
 
@@ -224,7 +223,7 @@ where
         T: Serializer,
     {
         let serde = UcanPayloadSerde {
-            ucv: VERSION,
+            ucv: VERSION.to_string(),
             iss: self.issuer.to_string(),
             aud: self.audience.to_string(),
             exp: self
