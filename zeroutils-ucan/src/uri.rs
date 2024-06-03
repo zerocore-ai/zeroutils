@@ -13,12 +13,10 @@ use crate::{UcanError, UcanResult};
 // Types
 //--------------------------------------------------------------------------------------------------
 
-/// Represents a Uniform Resource Identifier (URI) specifically tailored for use in UCAN tokens.
+/// A `ResourceUri` is how a resource is identified within a UCAN. They are fundamental in specifying
+/// the target of an ability, helping to distinguish between different resources.
 ///
-/// URIs are fundamental in specifying the target of an ability within UCAN, distinguishing between
-/// different resources and actions across various services and platforms.
-///
-/// # Important
+/// ## Important
 ///
 /// `did:wk` with locator components are not supported in URIs.
 #[allow(clippy::large_enum_variant)]
@@ -28,27 +26,33 @@ pub enum ResourceUri<'a> {
     Reference(ProofReference<'a>),
 
     /// Any other URI format.
-    Other(Uri<String>),
+    Other(OtherUri),
 }
+
+/// A URI that is not a UCAN-specific reference.
+pub type OtherUri = Uri<String>;
 
 /// A reference to a proof within a UCAN, defined by various UCAN-specific URI schemes.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum ProofReference<'a> {
-    /// Represents the URI scheme `ucan:*`, which selects all possible provable UCANs.
-    AllUcans,
+    /// Represents the URI scheme `ucan:*`, which selects all provable (incl. transient) capabilities for the issuer of the current UCAN.
+    AllUcansTransient,
 
-    /// Represents the URI scheme `ucan://<did>/*`, selecting all proofs by a DID.
-    AllProofsByDid(WrappedDidWebKey<'a>),
+    /// Represents the URI scheme `ucan://<did>/*`, selecting all provable capabilities of any UCAN with specified DID as audience.
+    AllUcansByDid(WrappedDidWebKey<'a>),
 
-    /// Represents the URI scheme `ucan://<did>/<scheme>`, selecting all proofs by a DID and scheme.
-    AllProofsByDidAndScheme(WrappedDidWebKey<'a>, String),
+    /// Represents the URI scheme `ucan://<did>/<scheme>`, selecting all provable capabilities - for a given scheme - of any UCAN with specified DID as audience.
+    AllUcansByDidAndScheme(WrappedDidWebKey<'a>, Scheme),
 
-    /// Represents the URI scheme `ucan:./*`, selecting all proofs in the current UCAN.
+    /// Represents the URI scheme `ucan:./*`, selecting all capabilities of all proofs in the current UCAN.
     AllProofsInCurrentUcan,
 
-    /// Represents the URI scheme `ucan:<cid>`, selecting a specific UCAN by its CID.
-    SpecificUcanByCid(Cid),
+    /// Represents the URI scheme `ucan:<cid>`, selecting all capabilities of a specific proof in the current UCAN.
+    SpecificProofByCid(Cid),
 }
+
+/// A scheme is a string that represents a valid URI scheme.
+pub type Scheme = String; // TODO
 
 //--------------------------------------------------------------------------------------------------
 // Constants
@@ -91,24 +95,24 @@ impl FromStr for ProofReference<'_> {
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         if UCAN_ALL_REGEX.is_match(s) {
-            Ok(ProofReference::AllUcans)
+            Ok(ProofReference::AllUcansTransient)
         } else if UCAN_CURRENT_REGEX.is_match(s) {
             Ok(ProofReference::AllProofsInCurrentUcan)
         } else if let Some(captures) = UCAN_DID_REGEX.captures(s) {
             let did = captures.get(1).unwrap().as_str();
-            Ok(ProofReference::AllProofsByDid(WrappedDidWebKey::from_str(
+            Ok(ProofReference::AllUcansByDid(WrappedDidWebKey::from_str(
                 did,
             )?))
         } else if let Some(captures) = UCAN_DID_SCHEME_REGEX.captures(s) {
             let did = captures.get(1).unwrap().as_str();
             let scheme = captures.get(2).unwrap().as_str();
-            Ok(ProofReference::AllProofsByDidAndScheme(
+            Ok(ProofReference::AllUcansByDidAndScheme(
                 WrappedDidWebKey::from_str(did)?,
                 scheme.to_string(),
             ))
         } else if let Some(captures) = UCAN_CID_REGEX.captures(s) {
             let cid = captures.get(1).unwrap().as_str();
-            Ok(ProofReference::SpecificUcanByCid(Cid::from_str(cid)?))
+            Ok(ProofReference::SpecificProofByCid(Cid::from_str(cid)?))
         } else {
             Err(UcanError::InvalidProofReference(s.to_string()))
         }
@@ -132,13 +136,13 @@ impl<'a> FromStr for ResourceUri<'a> {
 impl<'a> fmt::Display for ProofReference<'a> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            ProofReference::AllUcans => write!(f, "ucan:*"),
-            ProofReference::AllProofsByDid(did) => write!(f, "ucan://{}/*", did),
-            ProofReference::AllProofsByDidAndScheme(did, scheme) => {
+            ProofReference::AllUcansTransient => write!(f, "ucan:*"),
+            ProofReference::AllUcansByDid(did) => write!(f, "ucan://{}/*", did),
+            ProofReference::AllUcansByDidAndScheme(did, scheme) => {
                 write!(f, "ucan://{}/{}", did, scheme)
             }
             ProofReference::AllProofsInCurrentUcan => write!(f, "ucan:./*"),
-            ProofReference::SpecificUcanByCid(cid) => write!(f, "ucan:{}", cid),
+            ProofReference::SpecificProofByCid(cid) => write!(f, "ucan:{}", cid),
         }
     }
 }
@@ -206,14 +210,17 @@ mod tests {
     #[test]
     fn test_uri_from_str() -> anyhow::Result<()> {
         let uri = ResourceUri::from_str("ucan:*")?;
-        assert_eq!(uri, ResourceUri::Reference(ProofReference::AllUcans));
+        assert_eq!(
+            uri,
+            ResourceUri::Reference(ProofReference::AllUcansTransient)
+        );
 
         let uri = ResourceUri::from_str(
             "ucan://did:wk:z6MkhZCL2zJsfqdqSLkGdocC3rkU436qYvK8bsnPdFCW1iXp/*",
         )?;
         assert_eq!(
             uri,
-            ResourceUri::Reference(ProofReference::AllProofsByDid(WrappedDidWebKey::from_str(
+            ResourceUri::Reference(ProofReference::AllUcansByDid(WrappedDidWebKey::from_str(
                 "did:wk:z6MkhZCL2zJsfqdqSLkGdocC3rkU436qYvK8bsnPdFCW1iXp"
             )?))
         );
@@ -223,7 +230,7 @@ mod tests {
         )?;
         assert_eq!(
             uri,
-            ResourceUri::Reference(ProofReference::AllProofsByDidAndScheme(
+            ResourceUri::Reference(ProofReference::AllUcansByDidAndScheme(
                 WrappedDidWebKey::from_str(
                     "did:wk:z6MkhZCL2zJsfqdqSLkGdocC3rkU436qYvK8bsnPdFCW1iXp"
                 )?,
@@ -242,7 +249,7 @@ mod tests {
         )?;
         assert_eq!(
             uri,
-            ResourceUri::Reference(ProofReference::SpecificUcanByCid(Cid::from_str(
+            ResourceUri::Reference(ProofReference::SpecificProofByCid(Cid::from_str(
                 "bafkreihogico5an3e2xy3fykalfwxxry7itbhfcgq6f47sif6d7w6uk2ze"
             )?))
         );
@@ -261,10 +268,10 @@ mod tests {
 
     #[test]
     fn test_uri_display() -> anyhow::Result<()> {
-        let uri = ResourceUri::Reference(ProofReference::AllUcans);
+        let uri = ResourceUri::Reference(ProofReference::AllUcansTransient);
         assert_eq!(uri.to_string(), "ucan:*");
 
-        let uri = ResourceUri::Reference(ProofReference::AllProofsByDid(
+        let uri = ResourceUri::Reference(ProofReference::AllUcansByDid(
             WrappedDidWebKey::from_str("did:wk:z6MkhZCL2zJsfqdqSLkGdocC3rkU436qYvK8bsnPdFCW1iXp")?,
         ));
         assert_eq!(
@@ -272,7 +279,7 @@ mod tests {
             "ucan://did:wk:z6MkhZCL2zJsfqdqSLkGdocC3rkU436qYvK8bsnPdFCW1iXp/*"
         );
 
-        let uri = ResourceUri::Reference(ProofReference::AllProofsByDidAndScheme(
+        let uri = ResourceUri::Reference(ProofReference::AllUcansByDidAndScheme(
             WrappedDidWebKey::from_str("did:wk:z6MkhZCL2zJsfqdqSLkGdocC3rkU436qYvK8bsnPdFCW1iXp")?,
             "zerofs".to_string(),
         ));
@@ -284,7 +291,7 @@ mod tests {
         let uri = ResourceUri::Reference(ProofReference::AllProofsInCurrentUcan);
         assert_eq!(uri.to_string(), "ucan:./*");
 
-        let uri = ResourceUri::Reference(ProofReference::SpecificUcanByCid(Cid::from_str(
+        let uri = ResourceUri::Reference(ProofReference::SpecificProofByCid(Cid::from_str(
             "bafkreihogico5an3e2xy3fykalfwxxry7itbhfcgq6f47sif6d7w6uk2ze",
         )?));
         assert_eq!(

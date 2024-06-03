@@ -20,7 +20,7 @@ use crate::{
 
 /// A [`secp256k1`][ref] public key.
 ///
-/// # Important
+/// ## Important
 ///
 /// [Secp256k1][ref] is not a [safe curve][safe-curves].
 ///
@@ -30,7 +30,7 @@ pub type Secp256k1PubKey<'a> = PubKey<'a, PublicKey>;
 
 /// A [`secp256k1`][ref] key pair with a signing key.
 ///
-/// # Important
+/// ## Important
 ///
 /// [Secp256k1][ref] is not a [safe curve][safe-curves].
 ///

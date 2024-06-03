@@ -15,16 +15,17 @@ use crate::{Ability, Caveats, ResourceUri, UcanError, UcanResult};
 // Types
 //--------------------------------------------------------------------------------------------------
 
-/// A hierarchical mapping from a URI (as a namespace and resource identifier) to the associated abilities.
+/// Capabilities are a mapping of _resources_ to abilities. Each resource can have a set of _abilities_
+/// and each ability can have a set of _caveats_ that adds restrictions or conditions to the ability.
 ///
-/// Each ability can have a set of caveats, which are conditions or restrictions on the ability's use.
-/// This structure allows for a granular definition of permissions across different resources and actions.
+/// Capabilities are how UCANs define what actions can be performed on a resource and under what
+/// conditions.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Capabilities<'a>(BTreeMap<ResourceUri<'a>, Abilities>);
 
 /// Represents a set of actions (abilities) that can be performed on a resource, mapped to potential caveats.
 ///
-/// Abilities must be consistent with the resource's context (e.g., HTTP methods for web resources) and are case-insensitive.
+/// Abilities should be consistent with the resource's context (e.g., HTTP methods for web resources) and are case-insensitive.
 ///
 /// Abilities can be organized hierarchically, allowing for broad capabilities to encompass more specific ones.
 ///

@@ -24,21 +24,29 @@ pub const WILDCARD: &str = "*";
 /// Defines a specific action or permission applicable to a resource within a UCAN.
 ///
 /// An ability must include at least one namespace segment to distinguish it across different contexts,
-/// such as `http/put` versus `db/put`. The ability `*` is reserved to denote all possible abilities for a given resource.
+/// such as `http/put` versus `db/table/read`. An ability may also have `*` segments to represent all actions
+/// on a resource, such as `db/table/*`.
+///
+/// In addition to specific abilities, the [`ucan/*` ability][ucan-ability] is used to represent all possible
+/// abilities for a given resource using the [`ucan:` delegation scheme][ucan-scheme].
 ///
 /// Abilities are case-insensitive and should be consistent with the resource's context (e.g., HTTP methods for web resources).
+///
+/// [ucan-ability]: https://github.com/ucan-wg/spec?tab=readme-ov-file#51-ucan-delegation
+/// [ucan-scheme]: https://github.com/ucan-wg/spec?tab=readme-ov-file#41-ucan
 #[derive(PartialEq, Eq, PartialOrd, Ord, Clone, Debug)]
 pub enum Ability {
-    /// Resources referenced using the `ucan:` delegation scheme have the [`ucan/*` ability][ucan-ability], which represents
+    /// Resources referenced using the [`ucan:` delegation scheme][ucan-scheme] have the [`ucan/*` ability][ucan-ability], which represents
     /// all possible abilities for that given resource.
     ///
     /// [ucan-ability]: https://github.com/ucan-wg/spec?tab=readme-ov-file#51-ucan-delegation
+    /// [ucan-scheme]: https://github.com/ucan-wg/spec?tab=readme-ov-file#41-ucan
     Ucan,
 
     /// Represents a namespaced ability delimited by a forward slash, such as `http/post`.
     ///
     /// An ability can have multiple segments, such as `db/table/read` and it can also include wildcards
-    /// like `db/table/*` to represent all actions on a table.
+    /// like `db/table/*` to represent all actions on a table resource.
     ///
     /// The [`top`][top] ability is represented as just `*` denotes all possible abilities for a given
     /// resource.

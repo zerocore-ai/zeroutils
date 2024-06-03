@@ -1,15 +1,15 @@
 use std::{fmt::Display, str::FromStr};
 
+use libipld::Cid;
 use serde::{Deserialize, Serialize};
+use zeroutils_did_wk::WrappedDidWebKey;
 use zeroutils_key::{JwsAlgName, JwsAlgorithm, Sign, Verify};
 use zeroutils_store::{IpldStore, PlaceholderStore};
 
 use crate::{
-    Ability, DefaultUcanBuilder, ResourceUri, UcanBuilder, UcanHeader, UcanPayload, UcanResult,
-    UcanSignature,
+    Ability, DefaultUcanBuilder, ResourceUri, UcanBuilder, UcanError, UcanHeader, UcanPayload,
+    UcanResult, UcanSignature,
 };
-
-use super::UcanError;
 
 //--------------------------------------------------------------------------------------------------
 // Types
@@ -24,7 +24,7 @@ use super::UcanError;
 /// NOTE: This implementation currently only supports the `did:wk` DID method.
 ///
 /// [ucan]: https://github.com/ucan-wg/spec
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone)]
 pub struct Ucan<'a, S, H = (), V = ()>
 where
     S: IpldStore,
@@ -38,7 +38,7 @@ where
     /// The signature of the UCAN, proving its authenticity.
     pub(crate) signature: V,
     // /// Cached capabilities for the UCAN.
-    // resolved_capabilities: OnceCell<Capabilities<'a>>,
+    // resolved_capabilities: OnceCell<CapabilitiesDefinition<'a>>,
 }
 
 /// Represents a signed [UCAN (User-Controlled Authorization Network)][ucan] token with a header and signature.
@@ -47,7 +47,7 @@ where
 /// control over permissions. Unlike traditional access tokens, UCANs can be chained for
 /// delegation, enabling complex authorization scenarios without a central authority.
 ///
-/// # Important
+/// ## Important
 ///
 /// This implementation currently only supports the `did:wk` DID method.
 ///
@@ -60,7 +60,7 @@ pub type SignedUcan<'a, S = PlaceholderStore> = Ucan<'a, S, UcanHeader, UcanSign
 /// control over permissions. Unlike traditional access tokens, UCANs can be chained for
 /// delegation, enabling complex authorization scenarios without a central authority.
 ///
-/// # Important
+/// ## Important
 ///
 /// This implementation currently only supports the `did:wk` DID method.
 ///
@@ -151,7 +151,12 @@ where
 
     /// Validates the UCAN, ensuring that it is well-formed.
     pub fn validate(&self) -> UcanResult<()> {
-        self.payload.validate()
+        self.payload.validate_time_bounds()
+    }
+
+    /// Checks if the UCAN is addressed to the specified DID.
+    pub fn addressed_to(&self, did: &WrappedDidWebKey) -> bool {
+        self.payload.audience() == did
     }
 }
 
@@ -186,25 +191,22 @@ where
         Ok(ucan.use_store(store))
     }
 
-    /// Resolves the capabilities of a UCAN to their final form.
-    pub fn resolve_capabilities(&mut self) -> UcanResult<()> {
-        self.validate()?;
-        todo!("resolve capabilities")
-    }
-
     /// TODO: Implement this method.
     pub fn allows<'b>(
         &self,
         _resource: impl TryInto<ResourceUri<'b>>,
         _ability: impl TryInto<Ability>,
-    ) -> UcanResult<bool> {
+    ) -> UcanResult<()> {
         todo!()
     }
 
     /// Verifies the signature of the current UCAN against the public key of the issuer.
-    pub fn verify_principal_alignment(&self, issuer_ucan: SignedUcan<'a, S>) -> UcanResult<()> {
+    pub fn verify_principal_alignment<'b>(
+        &self,
+        proof_ucan: &'b SignedUcan<'b, S>,
+    ) -> UcanResult<()> {
         let our_issuer = self.payload.issuer();
-        let their_audience = issuer_ucan.payload.audience();
+        let their_audience = proof_ucan.payload.audience();
 
         // Check if their `aud` field matches our `iss` field
         if our_issuer != their_audience {
@@ -215,12 +217,26 @@ where
         }
 
         // Check if issuer's key signed our UCAN
-        let unsigned_ucan = UnsignedUcan::from_parts(self.header.clone(), self.payload.clone(), ());
-        our_issuer
-            .public_key()
-            .verify(unsigned_ucan.to_string().as_bytes(), self.signature())?;
+        self.verify_signature(our_issuer.public_key())?;
 
         Ok(())
+    }
+
+    /// Verifies the signature of the current UCAN against the provided key.
+    pub fn verify_signature<K>(&self, key: K) -> UcanResult<()>
+    where
+        K: Verify,
+    {
+        let unsigned_ucan = UnsignedUcan::from_parts(self.header.clone(), self.payload.clone(), ());
+        key.verify(unsigned_ucan.to_string().as_bytes(), self.signature())?;
+        Ok(())
+    }
+
+    /// Persists the UCAN to the IPLD store and returns its CID.
+    pub async fn persist(&self) -> UcanResult<Cid> {
+        let encoded = self.to_string();
+        let cid = self.payload.store.put_bytes(encoded).await?;
+        Ok(cid)
     }
 }
 
@@ -343,15 +359,38 @@ impl<'a, 'de> Deserialize<'de> for SignedUcan<'a, PlaceholderStore> {
     }
 }
 
+impl<S> PartialEq for SignedUcan<'_, S>
+where
+    S: IpldStore,
+{
+    fn eq(&self, other: &Self) -> bool {
+        self.header == other.header
+            && self.payload == other.payload
+            && self.signature == other.signature
+    }
+}
+
+impl<S, H> PartialEq for UnsignedUcan<'_, S, H>
+where
+    S: IpldStore,
+    H: PartialEq,
+{
+    fn eq(&self, other: &Self) -> bool {
+        self.header == other.header && self.payload == other.payload
+    }
+}
+
 //--------------------------------------------------------------------------------------------------
 // Tests
 //--------------------------------------------------------------------------------------------------
 
 #[cfg(test)]
 mod tests {
-    use std::time::UNIX_EPOCH;
+    use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
+    use zeroutils_did_wk::Base;
     use zeroutils_key::{Ed25519KeyPair, KeyPairGenerate};
+    use zeroutils_store::MemoryStore;
 
     use crate::caps;
 
@@ -363,7 +402,7 @@ mod tests {
         let ucan = Ucan::builder()
             .issuer("did:wk:m5wECtxi2kxRme2uhswu46BwzRtqvhEznWKucFrrph0I7+uo")
             .audience("did:wk:b5ua5l4wgcp46zrtn3ihjjmu5gbyhusmyt5bianl5ov2yrvj7wnh4vti")
-            .expiration(UNIX_EPOCH + std::time::Duration::from_secs(3600))
+            .expiration(UNIX_EPOCH + Duration::from_secs(3600))
             .not_before(UNIX_EPOCH)
             .nonce("1100263a4012")
             .facts(vec![])
@@ -390,7 +429,7 @@ mod tests {
         let signed_ucan = Ucan::builder()
             .issuer("did:wk:m5wECtxi2kxRme2uhswu46BwzRtqvhEznWKucFrrph0I7+uo")
             .audience("did:wk:b5ua5l4wgcp46zrtn3ihjjmu5gbyhusmyt5bianl5ov2yrvj7wnh4vti")
-            .expiration(UNIX_EPOCH + std::time::Duration::from_secs(3600))
+            .expiration(UNIX_EPOCH + Duration::from_secs(3600))
             .not_before(UNIX_EPOCH)
             .nonce("1100263a4012")
             .facts(vec![])
@@ -422,7 +461,7 @@ mod tests {
         let signed_ucan = Ucan::builder()
             .issuer("did:wk:m5wECtxi2kxRme2uhswu46BwzRtqvhEznWKucFrrph0I7+uo")
             .audience("did:wk:b5ua5l4wgcp46zrtn3ihjjmu5gbyhusmyt5bianl5ov2yrvj7wnh4vti")
-            .expiration(UNIX_EPOCH + std::time::Duration::from_secs(3600))
+            .expiration(UNIX_EPOCH + Duration::from_secs(3600))
             .not_before(UNIX_EPOCH)
             .nonce("1100263a4012")
             .facts(vec![])
@@ -459,6 +498,39 @@ mod tests {
 
         let decoded: SignedUcan<PlaceholderStore> = encoded.parse()?;
         assert_eq!(decoded, signed_ucan);
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_ucan_persist() -> anyhow::Result<()> {
+        let now = SystemTime::now();
+        let store = MemoryStore::default();
+        let base = Base::Base58Btc;
+        let principal_0_key = Ed25519KeyPair::generate(&mut rand::thread_rng())?;
+        let principal_1_key = Ed25519KeyPair::generate(&mut rand::thread_rng())?;
+        let principal_0_did = WrappedDidWebKey::from_key(&principal_0_key, base)?;
+        let principal_1_did = WrappedDidWebKey::from_key(&principal_1_key, base)?;
+
+        let ucan = Ucan::builder()
+            .issuer(principal_0_did)
+            .audience(principal_1_did.clone())
+            .expiration(now + Duration::from_secs(720_000))
+            .capabilities(caps! {
+                "zerodb://": {
+                    "db/read": [{}],
+                }
+            })
+            .store(&store)
+            .sign(&principal_0_key)?;
+
+        let cid = ucan.persist().await?;
+
+        let bytes = store.get_bytes(&cid).await?;
+        let stored_ucan =
+            SignedUcan::from_str(&String::from_utf8(bytes.to_vec())?)?.use_store(&store);
+
+        assert_eq!(ucan, stored_ucan);
 
         Ok(())
     }

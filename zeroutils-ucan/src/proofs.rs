@@ -1,7 +1,4 @@
-use std::{
-    collections::{BTreeMap, BTreeSet},
-    ops::{Deref, DerefMut},
-};
+use std::collections::{BTreeMap, BTreeSet};
 
 use async_once_cell::OnceCell;
 use libipld::Cid;
@@ -26,6 +23,15 @@ where
 
 /// A cached UCAN for a specific proof CID.
 pub type CachedUcan<'a, S> = OnceCell<SignedUcan<'a, S>>;
+
+/// Represents a proof in a `Proofs` collection.
+pub struct Proof<'a, S>
+where
+    S: IpldStore,
+{
+    cid: Cid,
+    cache: &'a CachedUcan<'a, S>,
+}
 
 //--------------------------------------------------------------------------------------------------
 // Methods
@@ -57,48 +63,61 @@ where
             .collect()
     }
 
-    /// Gets the UCAN associated with the given proof CID.
-    pub async fn fetch_cached_ucan(
+    /// Fetches the UCAN associated with the given proof CID from the store.
+    pub async fn fetch_ucan(
         &'a self,
         cid: &Cid,
         store: &'a S,
     ) -> UcanResult<&'a SignedUcan<'a, S>> {
-        let cache = self.0.get(cid).ok_or(UcanError::ProofCidNotFound(*cid))?;
-        let ucan = cache
+        let proof = self.get(cid).ok_or(UcanError::ProofCidNotFound(*cid))?;
+        proof.fetch_ucan(store).await
+    }
+
+    /// Gets the number of proofs in the collection.
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    /// Checks if the collection is empty.
+    pub fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
+
+    /// Checks if the collection contains the given proof CID.
+    pub fn contains_cid(&self, cid: &Cid) -> bool {
+        self.0.contains_key(cid)
+    }
+
+    /// Returns an iterator over the proofs in the collection.
+    pub fn iter(&'a self) -> impl Iterator<Item = Proof<'a, S>> {
+        self.0.iter().map(|(cid, cache)| Proof { cid: *cid, cache })
+    }
+
+    /// Gets the proof associated with the given CID.
+    pub fn get(&'a self, cid: &Cid) -> Option<Proof<'a, S>> {
+        self.0.get(cid).map(|cache| Proof { cid: *cid, cache })
+    }
+}
+
+impl<'a, S> Proof<'a, S>
+where
+    S: IpldStore,
+{
+    /// Fetches the UCAN associated with the proof from the store.
+    pub async fn fetch_ucan(&self, store: &'a S) -> UcanResult<&'a SignedUcan<'a, S>> {
+        self.cache
             .get_or_try_init(async {
-                let bytes = store.get_bytes(cid).await?;
+                let bytes = store.get_bytes(self.cid).await?;
                 let ucan_str = std::str::from_utf8(&bytes)?;
                 SignedUcan::with_store(ucan_str, store)
             })
-            .await?;
-
-        Ok(ucan)
+            .await
     }
 }
 
 //--------------------------------------------------------------------------------------------------
 // Trait Implementations: Proofs
 //--------------------------------------------------------------------------------------------------
-
-impl<'a, S> Deref for Proofs<'a, S>
-where
-    S: IpldStore,
-{
-    type Target = BTreeMap<Cid, CachedUcan<'a, S>>;
-
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
-
-impl<'a, S> DerefMut for Proofs<'a, S>
-where
-    S: IpldStore,
-{
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.0
-    }
-}
 
 impl<'a, S> FromIterator<(Cid, CachedUcan<'a, S>)> for Proofs<'a, S>
 where
@@ -222,8 +241,8 @@ mod tests {
         let proofs = Proofs::<PlaceholderStore>::from_iter(vec![cid_0, cid_1]);
 
         assert_eq!(proofs.len(), 2);
-        assert!(proofs.contains_key(&cid_0));
-        assert!(proofs.contains_key(&cid_1));
+        assert!(proofs.contains_cid(&cid_0));
+        assert!(proofs.contains_cid(&cid_1));
 
         Ok(())
     }

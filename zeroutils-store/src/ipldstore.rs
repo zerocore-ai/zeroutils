@@ -22,7 +22,7 @@ use super::StoreResult;
 /// encoded IPLD or raw bytes. This means stored data with the same bytes will always have the same key. This makes the
 /// store ideal for deduplication of data and ensuring data integrity.
 ///
-/// # Important
+/// ## Important
 ///
 /// An implementation is responsible for how it encodes types and how encoded IPLD data is broken down into smaller blocks
 /// when it exceeds a certain pre-determined size.

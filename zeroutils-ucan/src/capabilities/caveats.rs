@@ -16,10 +16,16 @@ use crate::{Select, UcanError, UcanResult};
 ///
 /// Caveats must contain [at least one empty object][caveats] which means the ability applies in all cases.
 ///
-/// NOTE: An empty caveat array means "in no case" does the ability apply, effectively denying access to
+/// ## Important
+/// An empty caveat array means "in no case" does the ability apply, effectively denying access to
 /// the associated resource. This behavior is not supported.
 ///
+/// When used in the construction of [`CapabilitiesDefinition`][crate::CapabilitiesDefinition], caveats
+/// are expected to be represented as JSON Type Definitions ([JTD][jtd]). More on that in
+/// [`CapabilitiesDefinition`][crate::CapabilitiesDefinition]
+///
 /// [caveats]: https://github.com/ucan-wg/spec?tab=readme-ov-file#3263-caveat-array
+/// [jtd]: https://datatracker.ietf.org/doc/html/rfc8927
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Caveats(Vec<Caveat>);
 

@@ -1,14 +1,10 @@
-mod ability;
-mod capability;
-mod caveats;
-mod definition;
-mod macros;
+mod resolution;
+mod ucan;
 
 //--------------------------------------------------------------------------------------------------
 // Exports
 //--------------------------------------------------------------------------------------------------
 
-pub use ability::*;
-pub use capability::*;
-pub use caveats::*;
-pub use definition::*;
+#[allow(unused)] // TODO
+pub(crate) use resolution::*;
+pub use ucan::*;

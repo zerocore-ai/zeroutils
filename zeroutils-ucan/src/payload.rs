@@ -27,7 +27,7 @@ pub const VERSION: &str = "0.10.0-alpha.1";
 //--------------------------------------------------------------------------------------------------
 
 /// Represents the payload part of a UCAN token, which contains all the claims and data necessary for the authorization process.
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug)]
 pub struct UcanPayload<'a, S>
 where
     S: IpldStore,
@@ -175,11 +175,6 @@ where
         Ok(ucan.use_store(store))
     }
 
-    /// Validates the UCAN, ensuring that it is well-formed.
-    pub fn validate(&self) -> UcanResult<()> {
-        self.validate_time_bounds()
-    }
-
     /// Checks if the UCAN's time bounds (`exp`, `nbf`) are valid relative to the current time (`now`).
     pub fn validate_time_bounds(&self) -> UcanResult<()> {
         if let (Some(exp), Some(nbf)) = (self.expiration, self.not_before) {
@@ -206,7 +201,7 @@ where
 
     /// Fetches the signed UCAN associated with the given CID.
     pub async fn fetch_proof_ucan(&'a mut self, cid: &Cid) -> UcanResult<&'a SignedUcan<'a, S>> {
-        self.proofs.fetch_cached_ucan(cid, self.store).await
+        self.proofs.fetch_ucan(cid, self.store).await
     }
 }
 
@@ -349,6 +344,27 @@ where
             proofs: self.proofs.clone(),
             store: self.store,
         }
+    }
+}
+
+impl<'a, S> PartialEq for UcanPayload<'a, S>
+where
+    S: IpldStore,
+{
+    fn eq(&self, other: &Self) -> bool {
+        self.issuer == other.issuer
+            && self.audience == other.audience
+            && self
+                .expiration
+                .map(|t| t.duration_since(UNIX_EPOCH).unwrap().as_secs())
+                == other
+                    .expiration
+                    .map(|t| t.duration_since(UNIX_EPOCH).unwrap().as_secs())
+            && self.not_before == other.not_before
+            && self.nonce == other.nonce
+            && self.facts == other.facts
+            && self.capabilities == other.capabilities
+            && self.proofs == other.proofs
     }
 }
 
