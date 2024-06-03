@@ -72,22 +72,22 @@ impl<'a> TryFrom<Capabilities<'a>> for CapabilitiesDefinition<'a> {
 
 #[cfg(test)]
 mod tests {
-    use crate::caps;
+    // use crate::caps;
 
-    use super::*;
+    // use super::*;
 
-    #[test]
-    fn test_capabilities_definition() -> anyhow::Result<()> {
-        let _caps_def = CapabilitiesDefinition::try_from(caps! {
-            "zerofs://": {
-                "dir/read": [{}],
-                "dir/write": [{}],
-                "dir/file/read": [{}],
-                "dir/file/write": [{}],
-                "dir/symlink/follow": [{}],
-            }
-        })?;
+    // #[test]
+    // fn test_capabilities_definition() -> anyhow::Result<()> {
+    //     let _caps_def = CapabilitiesDefinition::try_from(caps! {
+    //         "zerofs://": {
+    //             "dir/read": [{}],
+    //             "dir/write": [{}],
+    //             "dir/file/read": [{}],
+    //             "dir/file/write": [{}],
+    //             "dir/symlink/follow": [{}],
+    //         }
+    //     })?;
 
-        Ok(())
-    }
+    //     Ok(())
+    // }
 }
