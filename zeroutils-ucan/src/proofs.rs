@@ -17,12 +17,12 @@ use crate::{SignedUcan, UcanError, UcanResult};
 /// efficient querying and verification. These proofs are used to link UCANs hierarchically,
 /// establishing chains of delegation.
 #[derive(Debug)]
-pub struct Proofs<'a, S = PlaceholderStore>(BTreeMap<Cid, CachedUcan<'a, S>>)
+pub struct Proofs<S = PlaceholderStore>(pub(crate) BTreeMap<Cid, CachedUcan<S>>)
 where
     S: IpldStore;
 
 /// A cached UCAN for a specific proof CID.
-pub type CachedUcan<'a, S> = OnceCell<SignedUcan<'a, S>>;
+pub type CachedUcan<S> = OnceCell<SignedUcan<'static, S>>;
 
 /// Represents a proof in a `Proofs` collection.
 pub struct Proof<'a, S>
@@ -30,14 +30,14 @@ where
     S: IpldStore,
 {
     cid: Cid,
-    cache: &'a CachedUcan<'a, S>,
+    cache: &'a CachedUcan<S>,
 }
 
 //--------------------------------------------------------------------------------------------------
 // Methods
 //--------------------------------------------------------------------------------------------------
 
-impl<'a, S> Proofs<'a, S>
+impl<S> Proofs<S>
 where
     S: IpldStore,
 {
@@ -47,14 +47,14 @@ where
     }
 
     /// Changes the store used to resolve the proofs.
-    pub fn use_store<T>(self, store: &'a T) -> Proofs<'a, T>
+    pub fn use_store<T>(self, store: T) -> Proofs<T>
     where
         T: IpldStore,
     {
         self.0
             .into_iter()
             .map(|(cid, mut cached)| {
-                let cached = match cached.take().map(|ucan| ucan.use_store(store)) {
+                let cached = match cached.take().map(|ucan| ucan.use_store(store.clone())) {
                     Some(ucan) => OnceCell::from(ucan),
                     None => OnceCell::new(),
                 };
@@ -64,13 +64,20 @@ where
     }
 
     /// Fetches the UCAN associated with the given proof CID from the store.
-    pub async fn fetch_ucan(
-        &'a self,
+    pub async fn fetch_ucan<'b>(
+        &'b self,
         cid: &Cid,
-        store: &'a S,
-    ) -> UcanResult<&'a SignedUcan<'a, S>> {
-        let proof = self.get(cid).ok_or(UcanError::ProofCidNotFound(*cid))?;
-        proof.fetch_ucan(store).await
+        store: &'b S,
+    ) -> UcanResult<&'b SignedUcan<S>> {
+        self.0
+            .get(cid)
+            .ok_or(UcanError::ProofCidNotFound(*cid))?
+            .get_or_try_init(async {
+                let bytes = store.get_bytes(cid).await?;
+                let ucan_str = std::str::from_utf8(&bytes)?;
+                SignedUcan::with_store(ucan_str, store.clone())
+            })
+            .await
     }
 
     /// Gets the number of proofs in the collection.
@@ -89,29 +96,34 @@ where
     }
 
     /// Returns an iterator over the proofs in the collection.
-    pub fn iter(&'a self) -> impl Iterator<Item = Proof<'a, S>> {
+    pub fn iter(&self) -> impl Iterator<Item = Proof<S>> {
         self.0.iter().map(|(cid, cache)| Proof { cid: *cid, cache })
     }
 
     /// Gets the proof associated with the given CID.
-    pub fn get(&'a self, cid: &Cid) -> Option<Proof<'a, S>> {
+    pub fn get<'b>(&'b self, cid: &Cid) -> Option<Proof<'b, S>> {
         self.0.get(cid).map(|cache| Proof { cid: *cid, cache })
     }
 }
 
-impl<'a, S> Proof<'a, S>
+impl<S> Proof<'_, S>
 where
     S: IpldStore,
 {
     /// Fetches the UCAN associated with the proof from the store.
-    pub async fn fetch_ucan(&self, store: &'a S) -> UcanResult<&'a SignedUcan<'a, S>> {
+    pub async fn fetch_ucan<'b>(&'b self, store: &'b S) -> UcanResult<&'b SignedUcan<S>> {
         self.cache
             .get_or_try_init(async {
                 let bytes = store.get_bytes(self.cid).await?;
                 let ucan_str = std::str::from_utf8(&bytes)?;
-                SignedUcan::with_store(ucan_str, store)
+                SignedUcan::with_store(ucan_str, store.clone())
             })
             .await
+    }
+
+    /// Gets the CID of the proof.
+    pub fn cid(&self) -> &Cid {
+        &self.cid
     }
 }
 
@@ -119,16 +131,16 @@ where
 // Trait Implementations: Proofs
 //--------------------------------------------------------------------------------------------------
 
-impl<'a, S> FromIterator<(Cid, CachedUcan<'a, S>)> for Proofs<'a, S>
+impl<S> FromIterator<(Cid, CachedUcan<S>)> for Proofs<S>
 where
     S: IpldStore,
 {
-    fn from_iter<T: IntoIterator<Item = (Cid, CachedUcan<'a, S>)>>(iter: T) -> Self {
+    fn from_iter<T: IntoIterator<Item = (Cid, CachedUcan<S>)>>(iter: T) -> Self {
         Self(iter.into_iter().collect())
     }
 }
 
-impl<'a, S> FromIterator<Cid> for Proofs<'a, S>
+impl<S> FromIterator<Cid> for Proofs<S>
 where
     S: IpldStore,
 {
@@ -137,34 +149,45 @@ where
     }
 }
 
-impl<'a, S> From<BTreeMap<Cid, CachedUcan<'a, S>>> for Proofs<'a, S>
+impl<'a, S> FromIterator<Proof<'a, S>> for Proofs<S>
 where
     S: IpldStore,
 {
-    fn from(cids: BTreeMap<Cid, CachedUcan<'a, S>>) -> Self {
+    fn from_iter<T: IntoIterator<Item = Proof<'a, S>>>(iter: T) -> Self {
+        iter.into_iter()
+            .map(|proof| (*proof.cid(), OnceCell::new()))
+            .collect()
+    }
+}
+
+impl<S> From<BTreeMap<Cid, CachedUcan<S>>> for Proofs<S>
+where
+    S: IpldStore,
+{
+    fn from(cids: BTreeMap<Cid, CachedUcan<S>>) -> Self {
         Self(cids)
     }
 }
 
-impl<'a, S> From<Proofs<'a, S>> for BTreeMap<Cid, CachedUcan<'a, S>>
+impl<S> From<Proofs<S>> for BTreeMap<Cid, CachedUcan<S>>
 where
     S: IpldStore,
 {
-    fn from(proofs: Proofs<'a, S>) -> Self {
+    fn from(proofs: Proofs<S>) -> Self {
         proofs.0
     }
 }
 
-impl<'a, S> From<Proofs<'a, S>> for BTreeSet<Cid>
+impl<S> From<Proofs<S>> for BTreeSet<Cid>
 where
     S: IpldStore,
 {
-    fn from(proofs: Proofs<'a, S>) -> Self {
+    fn from(proofs: Proofs<S>) -> Self {
         proofs.0.keys().cloned().collect()
     }
 }
 
-impl<'a, S> Default for Proofs<'a, S>
+impl<S> Default for Proofs<S>
 where
     S: IpldStore,
 {
@@ -173,7 +196,7 @@ where
     }
 }
 
-impl<'a, S> Clone for Proofs<'a, S>
+impl<S> Clone for Proofs<S>
 where
     S: IpldStore,
 {
@@ -182,7 +205,7 @@ where
     }
 }
 
-impl<'a, S> Serialize for Proofs<'a, S>
+impl<S> Serialize for Proofs<S>
 where
     S: IpldStore,
 {
@@ -194,11 +217,11 @@ where
     }
 }
 
-impl<'a, 'de, S> Deserialize<'de> for Proofs<'a, S>
+impl<'de, S> Deserialize<'de> for Proofs<S>
 where
     S: IpldStore,
 {
-    fn deserialize<D>(deserializer: D) -> Result<Proofs<'a, S>, D::Error>
+    fn deserialize<D>(deserializer: D) -> Result<Proofs<S>, D::Error>
     where
         D: serde::Deserializer<'de>,
     {
@@ -207,7 +230,7 @@ where
     }
 }
 
-impl<'a, S> PartialEq for Proofs<'a, S>
+impl<S> PartialEq for Proofs<S>
 where
     S: IpldStore,
 {
@@ -216,7 +239,7 @@ where
     }
 }
 
-impl<'a, S> Eq for Proofs<'a, S> where S: IpldStore {}
+impl<S> Eq for Proofs<S> where S: IpldStore {}
 
 //--------------------------------------------------------------------------------------------------
 // Tests

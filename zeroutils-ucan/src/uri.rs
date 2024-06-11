@@ -7,7 +7,7 @@ use regex::Regex;
 use serde::Serialize;
 use zeroutils_did_wk::WrappedDidWebKey;
 
-use crate::{UcanError, UcanResult};
+use crate::UcanError;
 
 //--------------------------------------------------------------------------------------------------
 // Types
@@ -80,9 +80,55 @@ lazy_static! {
 //--------------------------------------------------------------------------------------------------
 
 impl ResourceUri<'_> {
-    /// TODO: Implement this method.
-    pub fn allows(&self, _other: &ResourceUri<'_>) -> UcanResult<bool> {
-        unimplemented!()
+    /// Checks if the `requested` resource uri is permitted by the main uri.
+    ///
+    /// This library follows a strict non-flexible approach here, allowing only the same resource
+    /// uri or a subset of it from a path perspective.
+    ///
+    /// That is if you have resource `zerofs://public`, for example, it will allow `zerofs://public`
+    /// and `zerofs://public/photos` but not `zerofs://private`.
+    pub fn permits(&self, requested: &ResourceUri<'_>) -> bool {
+        match (self, requested) {
+            (ResourceUri::Reference(pr1), ResourceUri::Reference(pr2)) => {
+                if pr1 == pr2 {
+                    return true;
+                }
+
+                // Allow ucan:<cid> as a subset of ucan:./*
+                if let (
+                    ProofReference::AllProofsInCurrentUcan,
+                    ProofReference::SpecificProofByCid(_),
+                ) = (pr1, pr2)
+                {
+                    return true;
+                }
+
+                // Allow ucan://<did>/scheme as a subset of ucan://<did>/*
+                if let (
+                    ProofReference::AllUcansByDid(did1),
+                    ProofReference::AllUcansByDidAndScheme(did2, _),
+                ) = (pr1, pr2)
+                {
+                    if did1 == did2 {
+                        return true;
+                    }
+                }
+            }
+            (ResourceUri::Other(uri1), ResourceUri::Other(uri2)) => {
+                if uri1.as_str() == uri2.as_str() {
+                    return true;
+                }
+
+                // Allow a subset of the path delimited by `/`
+                let uri1 = format!("{}/", uri1.as_str().trim_end_matches('/'));
+                if uri2.as_str().starts_with(&uri1) {
+                    return true;
+                }
+            }
+            _ => (),
+        }
+
+        false
     }
 }
 
@@ -304,6 +350,88 @@ mod tests {
                 .map_err(|(_, e)| UcanError::UriParseError(e))?,
         );
         assert_eq!(uri.to_string(), "https://example.com");
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_uri_permits() -> anyhow::Result<()> {
+        // Requested URI is the same as the URI
+        assert!(ResourceUri::from_str("ucan:*")?.permits(&ResourceUri::from_str("ucan:*")?));
+
+        assert!(ResourceUri::from_str("ucan:./*")?.permits(&ResourceUri::from_str("ucan:./*")?));
+
+        assert!(ResourceUri::from_str(
+            "ucan://did:wk:z6MkhZCL2zJsfqdqSLkGdocC3rkU436qYvK8bsnPdFCW1iXp/*"
+        )?
+        .permits(&ResourceUri::from_str(
+            "ucan://did:wk:z6MkhZCL2zJsfqdqSLkGdocC3rkU436qYvK8bsnPdFCW1iXp/*"
+        )?));
+
+        assert!(ResourceUri::from_str(
+            "ucan://did:wk:z6MkhZCL2zJsfqdqSLkGdocC3rkU436qYvK8bsnPdFCW1iXp/zerofs"
+        )?
+        .permits(&ResourceUri::from_str(
+            "ucan://did:wk:z6MkhZCL2zJsfqdqSLkGdocC3rkU436qYvK8bsnPdFCW1iXp/zerofs"
+        )?));
+
+        assert!(ResourceUri::from_str(
+            "ucan:bafkreihogico5an3e2xy3fykalfwxxry7itbhfcgq6f47sif6d7w6uk2ze"
+        )?
+        .permits(&ResourceUri::from_str(
+            "ucan:bafkreihogico5an3e2xy3fykalfwxxry7itbhfcgq6f47sif6d7w6uk2ze"
+        )?));
+
+        assert!(ResourceUri::from_str("https://example.com")?
+            .permits(&ResourceUri::from_str("https://example.com")?));
+
+        // Requested URI is a subset of the URI
+        assert!(
+            ResourceUri::from_str("ucan:./*")?.permits(&ResourceUri::from_str(
+                "ucan:bafkreihogico5an3e2xy3fykalfwxxry7itbhfcgq6f47sif6d7w6uk2ze"
+            )?)
+        );
+
+        assert!(ResourceUri::from_str(
+            "ucan://did:wk:z6MkhZCL2zJsfqdqSLkGdocC3rkU436qYvK8bsnPdFCW1iXp/*"
+        )?
+        .permits(&ResourceUri::from_str(
+            "ucan://did:wk:z6MkhZCL2zJsfqdqSLkGdocC3rkU436qYvK8bsnPdFCW1iXp/zerofs"
+        )?));
+
+        assert!(ResourceUri::from_str("https://example.com")?
+            .permits(&ResourceUri::from_str("https://example.com/photos")?));
+
+        assert!(ResourceUri::from_str("https://example.com/")?
+            .permits(&ResourceUri::from_str("https://example.com/photos")?));
+
+        // Fails
+        assert!(!ResourceUri::from_str("ucan:*")?.permits(&ResourceUri::from_str("ucan:./*")?));
+
+        assert!(!ResourceUri::from_str("ucan:./*")?.permits(&ResourceUri::from_str("ucan:*")?));
+
+        assert!(
+            !ResourceUri::from_str("ucan:*")?.permits(&ResourceUri::from_str(
+                "ucan://did:wk:z6MkhZCL2zJsfqdqSLkGdocC3rkU436qYvK8bsnPdFCW1iXp/*"
+            )?)
+        );
+
+        assert!(!ResourceUri::from_str(
+            "ucan://did:wk:z6MkhZCL2zJsfqdqSLkGdocC3rkU436qYvK8bsnPdFCW1iXp/*"
+        )?
+        .permits(&ResourceUri::from_str("ucan:*")?));
+
+        assert!(!ResourceUri::from_str("https://example.com")?
+            .permits(&ResourceUri::from_str("https://example.org")?));
+
+        assert!(!ResourceUri::from_str("https://example.com/photos")?
+            .permits(&ResourceUri::from_str("https://example.com")?));
+
+        assert!(
+            !ResourceUri::from_str("https://example.com/photos")?.permits(&ResourceUri::from_str(
+                "https://example.com/photos_gallery"
+            )?)
+        );
 
         Ok(())
     }

@@ -7,8 +7,7 @@ use zeroutils_key::{JwsAlgName, JwsAlgorithm, Sign, Verify};
 use zeroutils_store::{IpldStore, PlaceholderStore};
 
 use crate::{
-    Ability, DefaultUcanBuilder, ResourceUri, UcanBuilder, UcanError, UcanHeader, UcanPayload,
-    UcanResult, UcanSignature,
+    DefaultUcanBuilder, UcanBuilder, UcanError, UcanHeader, UcanPayload, UcanResult, UcanSignature,
 };
 
 //--------------------------------------------------------------------------------------------------
@@ -129,7 +128,7 @@ where
     }
 
     /// Transforms the Ucan to use a different IPLD store.
-    pub fn use_store<T>(self, store: &'a T) -> Ucan<'a, T, H, V>
+    pub fn use_store<T>(self, store: T) -> Ucan<'a, T, H, V>
     where
         T: IpldStore,
     {
@@ -186,18 +185,9 @@ where
     S: IpldStore,
 {
     /// Parses a signed UCAN from a string representation with a specified IPLD store.
-    pub fn with_store(string: impl AsRef<str>, store: &'a S) -> UcanResult<SignedUcan<'a, S>> {
-        let ucan: SignedUcan<'a, PlaceholderStore> = string.as_ref().parse()?;
+    pub fn with_store(string: impl AsRef<str>, store: S) -> UcanResult<SignedUcan<'static, S>> {
+        let ucan: SignedUcan<'static, PlaceholderStore> = string.as_ref().parse()?;
         Ok(ucan.use_store(store))
-    }
-
-    /// TODO: Implement this method.
-    pub fn allows<'b>(
-        &self,
-        _resource: impl TryInto<ResourceUri<'b>>,
-        _ability: impl TryInto<Ability>,
-    ) -> UcanResult<()> {
-        todo!()
     }
 
     /// Verifies the signature of the current UCAN against the public key of the issuer.
@@ -521,14 +511,14 @@ mod tests {
                     "db/read": [{}],
                 }
             })
-            .store(&store)
+            .store(store.clone())
             .sign(&principal_0_key)?;
 
         let cid = ucan.persist().await?;
 
         let bytes = store.get_bytes(&cid).await?;
         let stored_ucan =
-            SignedUcan::from_str(&String::from_utf8(bytes.to_vec())?)?.use_store(&store);
+            SignedUcan::from_str(&String::from_utf8(bytes.to_vec())?)?.use_store(store);
 
         assert_eq!(ucan, stored_ucan);
 

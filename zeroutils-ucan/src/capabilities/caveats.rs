@@ -1,9 +1,12 @@
-use std::{collections::BTreeMap, ops::Deref};
+use std::{
+    collections::BTreeMap,
+    ops::{Deref, Index},
+};
 
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
+use serde_json::{Map, Value};
 
-use crate::{Select, UcanError, UcanResult};
+use crate::{UcanError, UcanResult};
 
 //--------------------------------------------------------------------------------------------------
 // Types
@@ -27,25 +30,25 @@ use crate::{Select, UcanError, UcanResult};
 /// [caveats]: https://github.com/ucan-wg/spec?tab=readme-ov-file#3263-caveat-array
 /// [jtd]: https://datatracker.ietf.org/doc/html/rfc8927
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct Caveats(Vec<Caveat>);
+pub struct Caveats(pub(super) Vec<Caveat>);
 
 /// A single caveat that modifies or restricts how an associated ability can be used.
-pub type Caveat = BTreeMap<String, Value>;
+pub type Caveat = Map<String, Value>;
 
 //--------------------------------------------------------------------------------------------------
 // Methods
 //--------------------------------------------------------------------------------------------------
 
 impl Caveats {
-    /// Creates a `Caveats` instance that represents applying to all cases.
+    /// Creates the empty `Caveats` instance (`[{}]`) that represents applying to all cases. i.e., no restrictions.
     pub fn any() -> Self {
-        Caveats(vec![BTreeMap::new()])
+        Caveats(vec![Map::new()])
     }
 
     /// Creates a new `Caveats` instance from an iterator.
     #[allow(clippy::should_implement_trait)]
     pub fn from_iter(iter: impl IntoIterator<Item = BTreeMap<String, Value>>) -> UcanResult<Self> {
-        let caveats: Vec<_> = iter.into_iter().collect();
+        let caveats: Vec<_> = iter.into_iter().map(Map::from_iter).collect();
         if caveats.is_empty() {
             return Err(UcanError::EmptyCaveats);
         }
@@ -62,6 +65,108 @@ impl Caveats {
 
         Ok(Caveats(caveats))
     }
+
+    /// Gets the caveat at the given index.
+    pub fn get(&self, index: usize) -> Option<&Caveat> {
+        self.0.get(index)
+    }
+
+    /// Checks if the given `requested` caveats are permitted by main caveats.
+    ///
+    /// An object in the caveat array, represents a caveat. When checking the `requested` caveats array against
+    /// the main one, the objects in the caveats array are ORed together while the fields in each object
+    /// are ANDed together.
+    ///
+    /// ### ANDed Fields
+    ///
+    /// ANDed fields means the value of each object in the `requested` caveats array must have a superset relationship with
+    /// corresponding objects in the main caveats array.
+    ///
+    /// For example, if the main caveat array is `[{ "max_count": 5 }]` and `requested` is
+    /// `[{ "max_count": 5, "status": "active" }]`, the `requested` caveats are permitted. This is due to the `AND` semantics
+    /// of caveat fields, the `status` field here adds an additional constraint to `requested` caveats.
+    ///
+    /// ### ORed Array
+    ///
+    /// Meanwhile, the `requested` caveats array itself has a subset relationship with the main caveats array.
+    ///
+    /// For example, if the main caveats array contains `[{ "max_count": 5 }, { "status": "active" }]` and `requested` has
+    /// `[{ "max_count": 5 }]`, the `requested` caveats are permitted. This is due to the `OR` semantics of the caveats array,
+    /// the removal of a caveat object here adds additional restriction, reducing the number of valid cases.
+    pub fn permits(&self, requested: &Caveats) -> bool {
+        if requested.len() > self.len() {
+            return false;
+        }
+
+        for requested_caveat in requested.iter() {
+            if !self
+                .iter()
+                .any(|caveat| Caveats::is_subset_object(caveat, requested_caveat))
+            {
+                return false;
+            }
+        }
+
+        true
+    }
+
+    /// Checks if the given `this` object is a subset of the `that` object. It also takes nested fields into account.
+    pub(crate) fn is_subset_object(this: &Map<String, Value>, that: &Map<String, Value>) -> bool {
+        for (key, this_value) in this.iter() {
+            if let Some(that_value) = that.get(key) {
+                match (this_value, that_value) {
+                    (Value::Object(this_map), Value::Object(that_map)) => {
+                        if !Caveats::is_subset_object(this_map, that_map) {
+                            return false;
+                        }
+                    }
+                    (Value::Array(this_array), Value::Array(that_array)) => {
+                        if !Caveats::is_subset_array(this_array, that_array) {
+                            return false;
+                        }
+                    }
+                    (this_value, that_value) => {
+                        if this_value != that_value {
+                            return false;
+                        }
+                    }
+                }
+            } else {
+                return false;
+            }
+        }
+
+        true
+    }
+
+    /// Checks if the given `this` array is a subset of the `that` array.
+    pub(crate) fn is_subset_array(this: &[Value], that: &[Value]) -> bool {
+        if this.len() > that.len() {
+            return false;
+        }
+
+        for (this_value, that_value) in this.iter().zip(that.iter()) {
+            match (this_value, that_value) {
+                (Value::Object(this_map), Value::Object(that_map)) => {
+                    if !Caveats::is_subset_object(this_map, that_map) {
+                        return false;
+                    }
+                }
+                (Value::Array(this_array), Value::Array(that_array)) => {
+                    if !Caveats::is_subset_array(this_array, that_array) {
+                        return false;
+                    }
+                }
+                (this_value, that_value) => {
+                    if this_value != that_value {
+                        return false;
+                    }
+                }
+            }
+        }
+
+        true
+    }
 }
 
 //--------------------------------------------------------------------------------------------------
@@ -69,7 +174,7 @@ impl Caveats {
 //--------------------------------------------------------------------------------------------------
 
 impl Deref for Caveats {
-    type Target = Vec<BTreeMap<String, Value>>;
+    type Target = Vec<Map<String, Value>>;
 
     fn deref(&self) -> &Self::Target {
         &self.0
@@ -84,24 +189,11 @@ impl TryFrom<Vec<BTreeMap<String, Value>>> for Caveats {
     }
 }
 
-impl Select<usize, BTreeMap<String, Value>> for Caveats {
-    type Error = UcanError;
+impl Index<usize> for Caveats {
+    type Output = Map<String, Value>;
 
-    fn select(&self, caveat: usize) -> Result<Option<&BTreeMap<String, Value>>, Self::Error> {
-        Ok(self.get(caveat))
-    }
-}
-
-impl<K> Select<(usize, K), Value> for Caveats
-where
-    K: AsRef<str>,
-{
-    type Error = UcanError;
-
-    fn select(&self, (caveat, key): (usize, K)) -> Result<Option<&Value>, Self::Error> {
-        let caveat = self.select(caveat)?;
-        let key = caveat.and_then(|caveat| caveat.get(key.as_ref()));
-        Ok(key)
+    fn index(&self, index: usize) -> &Self::Output {
+        &self.0[index]
     }
 }
 
@@ -112,6 +204,8 @@ where
 #[cfg(test)]
 mod tests {
     use std::collections::BTreeMap;
+
+    use crate::caveats;
 
     use super::*;
 
@@ -126,6 +220,184 @@ mod tests {
 
         // Multiple caveats must have at least one non-empty caveat
         assert!(Caveats::from_iter(vec![BTreeMap::new(), BTreeMap::new()]).is_err());
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_caveats_indexing() -> anyhow::Result<()> {
+        let caveats = caveats! [{
+            "max_count": 5,
+            "templates": ["newsletter", "marketing"]
+        }];
+
+        assert_eq!(caveats[0]["max_count"], 5);
+        assert_eq!(caveats[0]["templates"][0], "newsletter");
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_caveat_is_subset() -> anyhow::Result<()> {
+        // Equal
+
+        let this = caveats![{}];
+
+        assert!(Caveats::is_subset_object(&this[0], &this[0]));
+
+        let this = caveats! [{
+            "max_count": 5,
+            "templates": ["newsletter"]
+        }];
+
+        assert!(Caveats::is_subset_object(&this[0], &this[0]));
+
+        // Subset
+
+        let this = caveats![{}];
+        let that = caveats! [{"max_count": 5}];
+
+        assert!(Caveats::is_subset_object(&this[0], &that[0]));
+
+        let this = caveats! [{
+            "templates": []
+        }];
+
+        let that = caveats! [{
+            "templates": ["newsletter"]
+        }];
+
+        assert!(Caveats::is_subset_object(&this[0], &that[0]));
+
+        let this = caveats! [{
+            "max_count": 5,
+            "templates": ["newsletter"]
+        }];
+
+        let that = caveats! [{
+            "max_count": 5,
+            "status": "active",
+            "templates": ["newsletter", "marketing"]
+        }];
+
+        assert!(Caveats::is_subset_object(&this[0], &that[0]));
+
+        let this = caveats! [{
+            "status": {},
+            "templates": [{
+                "newsletter": true
+            }]
+        }];
+
+        let that = caveats! [{
+            "max_count": 5,
+            "status": {
+                "active": true
+            },
+            "templates": [{
+                "newsletter": true,
+                "types": ["marketing"]
+            }]
+        }];
+
+        assert!(Caveats::is_subset_object(&this[0], &that[0]));
+
+        // Fails
+
+        let this = caveats! [{
+            "max_count": 5,
+        }];
+
+        let that = caveats![{}];
+
+        assert!(!Caveats::is_subset_object(&this[0], &that[0]));
+
+        let this = caveats! [{
+            "max_count": 5,
+        }];
+
+        let that = caveats! [{
+            "max_count": "5"
+        }];
+
+        assert!(!Caveats::is_subset_object(&this[0], &that[0]));
+
+        let this = caveats! [{
+            "max_count": 5,
+            "templates": ["newsletter"]
+        }];
+
+        let that = caveats! [{
+            "max_count": 5,
+            "status": "active",
+        }];
+
+        assert!(!Caveats::is_subset_object(&this[0], &that[0]));
+
+        let this = caveats! [{
+            "max_count": 5,
+            "status": "active",
+            "templates": ["newsletter", "marketing"]
+        }];
+
+        let that = caveats! [{
+            "max_count": 5,
+            "templates": ["newsletter"]
+        }];
+
+        assert!(!Caveats::is_subset_object(&this[0], &that[0]));
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_caveats_permits() -> anyhow::Result<()> {
+        let main = caveats![{}];
+        let requested = caveats![{"status": "active"}];
+
+        assert!(main.permits(&requested));
+
+        let main = caveats![{"status": "active"}, {"max_count": 5}];
+        let requested = caveats![{"status": "active"}];
+
+        assert!(main.permits(&requested));
+
+        let main = caveats![{"status": "active"}, {"max_count": 5}];
+        let requested = caveats![{"status": "active"}];
+
+        assert!(main.permits(&requested));
+
+        let main = caveats! [
+            {
+                "max_count": 5,
+                "templates": ["newsletter"]
+            },
+            {
+                "public": true
+            }
+        ];
+
+        let requested = caveats! [
+            {
+                "max_count": 5,
+                "status": "active",
+                "templates": ["newsletter", "marketing"]
+            }
+        ];
+
+        assert!(main.permits(&requested));
+
+        // Fails
+
+        let main = caveats![{"status": "active"}];
+        let requested = caveats![{}];
+
+        assert!(!main.permits(&requested));
+
+        let main = caveats![{"status": "active"}];
+        let requested = caveats![{"status": "active"}, {"max_count": 5}];
+
+        assert!(!main.permits(&requested));
 
         Ok(())
     }

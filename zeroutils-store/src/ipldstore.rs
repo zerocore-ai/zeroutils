@@ -24,6 +24,9 @@ use super::StoreResult;
 ///
 /// ## Important
 ///
+/// The trait is designed for cheap clones, therefore it is recommended to implement `Clone` for your store with
+/// inexpensive cloning semantics.
+///
 /// An implementation is responsible for how it encodes types and how encoded IPLD data is broken down into smaller blocks
 /// when it exceeds a certain pre-determined size.
 ///
@@ -31,7 +34,7 @@ use super::StoreResult;
 /// [ipld]: https://ipld.io/
 ///
 // TODO: Add support for deleting blocks with `derefence` method.
-pub trait IpldStore {
+pub trait IpldStore: Clone {
     /// Saves an IPLD serializable object to the store and returns the `Cid` to it.
     ///
     /// This operation provides an opportunity for the store to build an internal graph of dependency.

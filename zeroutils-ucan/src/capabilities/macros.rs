@@ -19,10 +19,10 @@ macro_rules! caps {
                 let mut ability_list = std::collections::BTreeMap::new();
                 $(
                     let caveats = $crate::caveats![$($caveats),*];
-                    ability_list.insert($ability.parse()?, caveats);
+                    ability_list.insert($ability.parse().unwrap(), caveats);
                 )+
-                let abilities = $crate::Abilities::from_iter(ability_list)?;
-                capabilities.insert(<$crate::ResourceUri as std::str::FromStr>::from_str($uri)?, abilities);
+                let abilities = $crate::Abilities::from_iter(ability_list).unwrap();
+                capabilities.insert(<$crate::ResourceUri as std::str::FromStr>::from_str($uri).unwrap(), abilities);
             )*
             capabilities
         }
@@ -37,9 +37,9 @@ macro_rules! abilities {
             let mut abilities = std::collections::BTreeMap::new();
             $(
                 let caveats = $crate::caveats![$($caveats),*];
-                abilities.insert($ability.parse()?, caveats);
+                abilities.insert($ability.parse().unwrap(), caveats);
             )*
-            $crate::Abilities::from_iter(abilities)?
+            $crate::Abilities::from_iter(abilities).unwrap()
         }
     };
 }
@@ -64,7 +64,7 @@ macro_rules! caveats {
                 caveat_list.push(std::collections::BTreeMap::new());
             }
 
-            $crate::Caveats::from_iter(caveat_list)?
+            $crate::Caveats::from_iter(caveat_list).unwrap()
         }
     };
 }

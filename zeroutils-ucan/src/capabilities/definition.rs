@@ -40,16 +40,11 @@ impl<'a> CapabilitiesDefinition<'a> {
     /// Validates and canonicalizes the capabilities definition.
     pub fn canonicalize(_capabilities: Capabilities<'a>) -> UcanResult<Self> {
         // TODO: Implement this method
-        todo!()
+        Ok(Self(_capabilities))
     }
 
-    /// Checks if the given `resource ✕ ability ✕ caveats` access tuple is allowed.
-    pub fn allows<'b>(
-        &self,
-        _resource: impl TryInto<ResourceUri<'b>>,
-        _ability: impl TryInto<Ability>,
-        _caveats: impl TryInto<Caveats>,
-    ) -> UcanResult<()> {
+    /// Checks if the given `resource ✕ ability ✕ caveats` access tuple is included in the definition.
+    pub fn includes(&self, _resource: &ResourceUri, _ability: &Ability, _caveats: &Caveats) {
         todo!()
     }
 }

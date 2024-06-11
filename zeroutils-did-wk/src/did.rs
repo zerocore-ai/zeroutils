@@ -143,6 +143,11 @@ impl<P> DidWebKey<P> {
         &self.public_key
     }
 
+    /// Gets the base encoding.
+    pub fn base(&self) -> Base {
+        self.base
+    }
+
     /// Gets the locator component.
     pub fn locator_component(&self) -> Option<&LocatorComponent> {
         self.locator_component.as_ref()
@@ -302,6 +307,15 @@ impl<'a> WrappedDidWebKey<'a> {
             WrappedDidWebKey::Secp256k1(wk) => wk.encode(base),
         }
     }
+
+    /// Gets the base encoding.
+    pub fn base(&self) -> Base {
+        match self {
+            WrappedDidWebKey::Ed25519(wk) => wk.base(),
+            WrappedDidWebKey::P256(wk) => wk.base(),
+            WrappedDidWebKey::Secp256k1(wk) => wk.base(),
+        }
+    }
 }
 
 //--------------------------------------------------------------------------------------------------
@@ -397,6 +411,18 @@ impl<'de, 'a> Deserialize<'de> for WrappedDidWebKey<'a> {
     {
         let did_string = String::deserialize(deserializer)?;
         WrappedDidWebKey::from_str(&did_string).map_err(serde::de::Error::custom)
+    }
+}
+
+impl IntoOwned for WrappedDidWebKey<'_> {
+    type Owned = WrappedDidWebKey<'static>;
+
+    fn into_owned(self) -> Self::Owned {
+        match self {
+            WrappedDidWebKey::Ed25519(wk) => WrappedDidWebKey::Ed25519(wk.into_owned()),
+            WrappedDidWebKey::P256(wk) => WrappedDidWebKey::P256(wk.into_owned()),
+            WrappedDidWebKey::Secp256k1(wk) => WrappedDidWebKey::Secp256k1(wk.into_owned()),
+        }
     }
 }
 

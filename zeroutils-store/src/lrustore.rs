@@ -27,6 +27,7 @@ pub const LRU_STORE_BLOCK_SIZE: usize = 256 * 1024; // 256 KiB
 /// The `LruStore` struct provides an in-memory storage mechanism for IPLD blocks with a specified capacity.
 /// It leverages an LRU cache to manage the stored blocks, evicting the least recently used blocks when the
 /// capacity is reached.
+#[derive(Clone)]
 pub struct LruStore {
     blocks: Arc<RwLock<LruCache<Cid, Bytes>>>,
 }

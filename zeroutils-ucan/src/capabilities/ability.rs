@@ -1,5 +1,6 @@
 use std::{fmt::Display, str::FromStr};
 
+use itertools::{EitherOrBoth, Itertools};
 use serde::{Deserialize, Serialize};
 
 use crate::{UcanError, UcanResult};
@@ -67,7 +68,7 @@ pub enum PathSegment {
     /// Represents a specific segment in a path, such as `http` or `db`. The segment is case-insensitive.
     Segment(String),
 
-    /// Represents a wildcard segment in a path, such as `*`.
+    /// Represents a wildcard segment in a path, which is `*`.
     Wildcard,
 }
 
@@ -85,9 +86,44 @@ impl Ability {
         Path::from_iter(iter).map(Self::Path)
     }
 
-    /// TODO: Implement this method.
-    pub fn allows(&self, _other: &Ability) -> UcanResult<bool> {
-        unimplemented!()
+    /// Checks if the `requested` ability is permitted by main ability.
+    ///
+    /// It basically checks if the `requested` ability is the same or a subset of
+    /// the ability. For example, `http/*` permits `http/get` and `http/post`.
+    ///
+    /// `ucan/*` permits all abilities.
+    ///
+    /// ## Important
+    /// Only trailing wildcards are supported.
+    pub fn permits(&self, requested: &Ability) -> bool {
+        match (self, requested) {
+            (Self::Ucan, _) => true, // All abilities are permitted by `ucan/*`.
+            (Self::Path(path), Self::Path(requested_path)) => {
+                if path.segments.len() > requested_path.segments.len() {
+                    return false;
+                }
+
+                for items in path
+                    .segments
+                    .iter()
+                    .zip_longest(requested_path.segments.iter())
+                {
+                    match items {
+                        EitherOrBoth::Both(segment, requested_segment) => {
+                            if segment != requested_segment && segment != &PathSegment::Wildcard {
+                                return false;
+                            }
+                        }
+                        _ => {
+                            return false;
+                        }
+                    }
+                }
+
+                true
+            }
+            _ => false,
+        }
     }
 }
 
@@ -349,6 +385,50 @@ mod tests {
         let ability1 = Ability::from_str("http/get")?;
         let ability2 = Ability::from_str("HTTP/GET")?;
         assert_eq!(ability1, ability2);
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_ability_permits() -> anyhow::Result<()> {
+        let ability = Ability::from_str("http/get")?;
+        let requested = Ability::from_str("http/get")?;
+        assert!(ability.permits(&requested));
+
+        let requested = Ability::from_str("http/post")?;
+        assert!(!ability.permits(&requested));
+
+        let requested = Ability::from_str("http")?;
+        assert!(!ability.permits(&requested));
+
+        let requested = Ability::from_str("http/get/extra")?;
+        assert!(!ability.permits(&requested));
+
+        // Wildcard
+        let ability = Ability::from_str("http/*")?;
+        let requested = Ability::from_str("http/get")?;
+        assert!(ability.permits(&requested));
+
+        let requested = Ability::from_str("http/post")?;
+        assert!(ability.permits(&requested));
+
+        let requested = Ability::from_str("http")?;
+        assert!(!ability.permits(&requested));
+
+        let requested = Ability::from_str("http/get/extra")?;
+        assert!(!ability.permits(&requested));
+
+        // ucan/*
+        let ability = Ability::from_str("ucan/*")?;
+
+        let requested = Ability::from_str("http/get")?;
+        assert!(ability.permits(&requested));
+
+        let requested = Ability::from_str("http/post")?;
+        assert!(ability.permits(&requested));
+
+        let requested = Ability::from_str("http")?;
+        assert!(ability.permits(&requested));
 
         Ok(())
     }

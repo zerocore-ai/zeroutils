@@ -39,6 +39,8 @@ mod uri;
 // Exports
 //--------------------------------------------------------------------------------------------------
 
+pub mod testgen;
+
 pub use authority::*;
 pub use builder::*;
 pub use capabilities::*;

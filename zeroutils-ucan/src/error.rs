@@ -5,6 +5,11 @@ use std::time::SystemTime;
 use libipld::{cid::Version, Cid};
 use thiserror::Error;
 
+use crate::{
+    Abilities, CapabilityTuple, Trace, UnresolvedCapWithRootIss, UnresolvedUcanWithAud,
+    UnresolvedUcanWithCid,
+};
+
 //--------------------------------------------------------------------------------------------------
 // Types
 //--------------------------------------------------------------------------------------------------
@@ -114,6 +119,67 @@ pub enum UcanError {
     /// Unsupported token type
     #[error("Unsupported token type: {0}")]
     UnsupportedTokenType(String),
+
+    /// Attenuation failed
+    #[error("Attenuation failed: {0}")]
+    AttenuationError(#[from] AttenuationError),
+
+    /// Permission error
+    #[error("Permission error: {0}")]
+    PermissionError(#[from] PermissionError),
+
+    /// Unresolved capabilities
+    #[error("Unresolved capabilities: unresolved with cids: {unresolved_with_cids:?}, unresolved with auds: {unresolved_with_auds:?}, unresolved with root iss: {unresolved_with_root_iss:?}")]
+    UnresolvedCapabilities {
+        /// List of unresolved `UcanWithCid`s.
+        unresolved_with_cids: Vec<UnresolvedUcanWithCid>,
+
+        /// List of unresolved `UcanWithAud`s.
+        unresolved_with_auds: Vec<UnresolvedUcanWithAud>,
+
+        /// List of unresolved `CapWithRootIss`s.
+        unresolved_with_root_iss: Vec<UnresolvedCapWithRootIss>,
+    },
+}
+
+/// Defines the attenuation errors that can occur in UCAN operations.
+#[derive(Debug, Error)]
+pub enum AttenuationError {
+    /// Capability not delegated by root issuer
+    #[error("Capability not delegated by root issuer: {0:?}, trace: {1:?}")]
+    CapabilityNotDelegatedByRootIssuer(CapabilityTuple, Trace),
+
+    /// Capability not permitted
+    #[error("Capability not permitted in scope: {0:?}, trace: {1:?}")]
+    CapabilityNotPermittedInScope(CapabilityTuple, Trace),
+
+    /// Abilities not permitted in scope
+    #[error("Abilities not permitted in scope: requested abilities: {0:?}, trace: {1:?}")]
+    AbilitiesNotPermittedInScope(Abilities, Trace),
+
+    /// Audience did not match
+    #[error("Audience did not match: {0:?}, trace: {1:?}")]
+    AudienceDidNotMatch(String, Trace),
+
+    /// Scheme not permitted in scope
+    #[error("Scheme not permitted in scope: {0:?}, trace: {1:?}")]
+    SchemeNotPermittedInScope(String, Trace),
+}
+
+/// Defines the permission errors that can occur in UCAN operations.
+#[derive(Debug, Error)]
+pub enum PermissionError {
+    /// Resource URI not permitted
+    #[error("Resource URI not permitted: allowed identifier: {0}, requested identifier: {1}")]
+    UnpermittedResourceUri(String, String),
+
+    /// Ability not permitted
+    #[error("Ability not permitted: allowed ability: {0}, requested ability: {1}")]
+    UnpermittedAbility(String, String),
+
+    /// Caveats not permitted
+    #[error("Caveats not permitted: allowed caveats: {0}, requested caveats: {1}")]
+    UnpermittedCaveats(String, String),
 }
 
 //--------------------------------------------------------------------------------------------------

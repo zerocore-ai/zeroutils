@@ -1,8 +1,9 @@
-use std::{collections::HashSet, path::PathBuf};
+use std::{collections::HashSet, path::PathBuf, sync::Arc};
 
 use bytes::Bytes;
 use libipld::Cid;
 use serde::Serialize;
+use tokio::sync::RwLock;
 
 use crate::{Codec, IpldReferences, IpldStore, StoreResult};
 
@@ -22,7 +23,12 @@ pub const DISK_IPLD_STORE_BLOCK_SIZE: usize = 256 * 1024; // 256 KiB
 //--------------------------------------------------------------------------------------------------
 
 /// A block store that stores blocks on disk.
+#[derive(Clone)]
 pub struct DiskStore {
+    _inner: Arc<RwLock<DiskStoreInner>>,
+}
+
+struct DiskStoreInner {
     /// The base directory where the blocks are stored.
     ///
     /// Default is set to `~/.zerofs`.
@@ -37,7 +43,9 @@ impl DiskStore {
     /// Creates a new `DiskStore` with the given base directory.
     pub fn new(base_dir: impl Into<PathBuf>) -> Self {
         Self {
-            _base_dir: base_dir.into(),
+            _inner: Arc::new(RwLock::new(DiskStoreInner {
+                _base_dir: base_dir.into(),
+            })),
         }
     }
 }

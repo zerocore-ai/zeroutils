@@ -13,7 +13,7 @@ use serde::{Deserialize, Serialize, Serializer};
 use zeroutils_did_wk::WrappedDidWebKey;
 use zeroutils_store::{IpldStore, PlaceholderStore};
 
-use crate::{Capabilities, Facts, Proofs, SignedUcan, UcanError, UcanResult};
+use crate::{Capabilities, Facts, Proofs, UcanError, UcanResult};
 
 //--------------------------------------------------------------------------------------------------
 // Constants
@@ -54,10 +54,10 @@ where
     pub(crate) capabilities: Capabilities<'a>,
 
     /// Proofs or delegations referenced by the UCAN.
-    pub(crate) proofs: Proofs<'a, S>,
+    pub(crate) proofs: Proofs<S>,
 
     /// The data store used to resolve proof links in the UCAN.
-    pub(crate) store: &'a S,
+    pub(crate) store: S,
 }
 
 //--------------------------------------------------------------------------------------------------
@@ -98,7 +98,7 @@ where
     S: IpldStore,
 {
     /// Changes the store for the UCAN payload.
-    pub fn use_store<T>(self, store: &'a T) -> UcanPayload<'a, T>
+    pub fn use_store<T>(self, store: T) -> UcanPayload<'a, T>
     where
         T: IpldStore,
     {
@@ -110,7 +110,7 @@ where
             nonce: self.nonce,
             facts: self.facts,
             capabilities: self.capabilities,
-            proofs: self.proofs.use_store(store),
+            proofs: self.proofs.use_store(store.clone()),
             store,
         }
     }
@@ -151,13 +151,13 @@ where
     }
 
     /// Returns the proofs or delegations referenced by the UCAN.
-    pub fn proofs(&self) -> &Proofs<'a, S> {
+    pub fn proofs(&self) -> &Proofs<S> {
         &self.proofs
     }
 
     /// Returns the data store used to resolve proof links in the UCAN.
     pub fn store(&self) -> &S {
-        self.store
+        &self.store
     }
 }
 
@@ -170,7 +170,7 @@ where
     S: IpldStore,
 {
     /// Create a new UCAN payload with the given store.
-    pub fn with_store(string: impl AsRef<str>, store: &'a S) -> UcanResult<UcanPayload<'a, S>> {
+    pub fn with_store(string: impl AsRef<str>, store: S) -> UcanResult<UcanPayload<'static, S>> {
         let ucan = UcanPayload::from_str(string.as_ref())?;
         Ok(ucan.use_store(store))
     }
@@ -197,11 +197,6 @@ where
         }
 
         Ok(())
-    }
-
-    /// Fetches the signed UCAN associated with the given CID.
-    pub async fn fetch_proof_ucan(&'a mut self, cid: &Cid) -> UcanResult<&'a SignedUcan<'a, S>> {
-        self.proofs.fetch_ucan(cid, self.store).await
     }
 }
 
@@ -303,7 +298,7 @@ impl<'a, 'de> Deserialize<'de> for UcanPayload<'a, PlaceholderStore> {
             facts: payload.fct,
             capabilities: payload.cap,
             proofs: payload.prf.into_iter().collect(),
-            store: &PlaceholderStore,
+            store: PlaceholderStore,
         })
     }
 }
@@ -342,7 +337,7 @@ where
             facts: self.facts.clone(),
             capabilities: self.capabilities.clone(),
             proofs: self.proofs.clone(),
-            store: self.store,
+            store: self.store.clone(),
         }
     }
 }
@@ -400,7 +395,7 @@ mod tests {
             facts,
             capabilities,
             proofs,
-            store: &PlaceholderStore,
+            store: PlaceholderStore,
         };
 
         let serialized = serde_json::to_string(&payload)?;
@@ -429,7 +424,7 @@ mod tests {
             facts: None,
             capabilities,
             proofs: Proofs::default(),
-            store: &PlaceholderStore,
+            store: PlaceholderStore,
         };
 
         let serialized = serde_json::to_string(&payload)?;
@@ -467,7 +462,7 @@ mod tests {
             facts,
             capabilities,
             proofs,
-            store: &PlaceholderStore,
+            store: PlaceholderStore,
         };
 
         let displayed = payload.to_string();
@@ -496,7 +491,7 @@ mod tests {
             facts: None,
             capabilities,
             proofs: Proofs::default(),
-            store: &PlaceholderStore,
+            store: PlaceholderStore,
         };
 
         let displayed = payload.to_string();

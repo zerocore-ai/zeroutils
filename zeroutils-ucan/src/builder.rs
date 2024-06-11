@@ -13,7 +13,7 @@ use crate::{Capabilities, Facts, Proofs, SignedUcan, Ucan, UcanPayload, UcanResu
 //--------------------------------------------------------------------------------------------------
 
 /// A builder for creating UCAN (User-Controlled Authorization Network) tokens.
-pub struct UcanBuilder<'a, I = (), A = (), E = (), C = (), S = PlaceholderStore>
+pub struct UcanBuilder<I = (), A = (), E = (), C = (), S = PlaceholderStore>
 where
     S: IpldStore,
 {
@@ -24,18 +24,18 @@ where
     nonce: Option<String>,
     facts: Option<Facts>,
     capabilities: C,
-    proofs: Proofs<'a, S>,
-    store: &'a S,
+    proofs: Proofs<S>,
+    store: S,
 }
 
 /// A builder for creating UCAN (User-Controlled Authorization Network) tokens.
-pub type DefaultUcanBuilder<'a> = UcanBuilder<'a, (), (), (), (), PlaceholderStore>;
+pub type DefaultUcanBuilder<'a> = UcanBuilder<(), (), (), (), PlaceholderStore>;
 
 //--------------------------------------------------------------------------------------------------
 // Methods
 //--------------------------------------------------------------------------------------------------
 
-impl<'a, I, A, E, C, S> UcanBuilder<'a, I, A, E, C, S>
+impl<I, A, E, C, S> UcanBuilder<I, A, E, C, S>
 where
     S: IpldStore,
 {
@@ -46,7 +46,7 @@ where
     pub fn issuer<'b>(
         self,
         issuer: impl Into<WrappedDidWebKey<'b>>,
-    ) -> UcanBuilder<'a, WrappedDidWebKey<'b>, A, E, C, S> {
+    ) -> UcanBuilder<WrappedDidWebKey<'b>, A, E, C, S> {
         UcanBuilder {
             issuer: issuer.into(),
             audience: self.audience,
@@ -64,7 +64,7 @@ where
     pub fn audience<'b>(
         self,
         audience: impl Into<WrappedDidWebKey<'b>>,
-    ) -> UcanBuilder<'a, I, WrappedDidWebKey<'b>, E, C, S> {
+    ) -> UcanBuilder<I, WrappedDidWebKey<'b>, E, C, S> {
         UcanBuilder {
             issuer: self.issuer,
             audience: audience.into(),
@@ -82,7 +82,7 @@ where
     pub fn expiration(
         self,
         expiration: impl Into<Option<SystemTime>>,
-    ) -> UcanBuilder<'a, I, A, Option<SystemTime>, C, S> {
+    ) -> UcanBuilder<I, A, Option<SystemTime>, C, S> {
         UcanBuilder {
             issuer: self.issuer,
             audience: self.audience,
@@ -121,10 +121,7 @@ where
     }
 
     /// Sets the capabilities or permissions granted by the UCAN.
-    pub fn capabilities(
-        self,
-        capabilities: Capabilities<'a>,
-    ) -> UcanBuilder<I, A, E, Capabilities, S> {
+    pub fn capabilities(self, capabilities: Capabilities) -> UcanBuilder<I, A, E, Capabilities, S> {
         UcanBuilder {
             issuer: self.issuer,
             audience: self.audience,
@@ -139,7 +136,7 @@ where
     }
 
     /// Changes the store used for handling IPLD data.
-    pub fn store<T>(self, store: &'a T) -> UcanBuilder<'a, I, A, E, C, T>
+    pub fn store<T>(self, store: T) -> UcanBuilder<I, A, E, C, T>
     where
         T: IpldStore,
     {
@@ -151,21 +148,14 @@ where
             nonce: self.nonce,
             facts: self.facts,
             capabilities: self.capabilities,
-            proofs: self.proofs.use_store(store),
+            proofs: self.proofs.use_store(store.clone()),
             store,
         }
     }
 }
 
 impl<'a, S>
-    UcanBuilder<
-        'a,
-        WrappedDidWebKey<'a>,
-        WrappedDidWebKey<'a>,
-        Option<SystemTime>,
-        Capabilities<'a>,
-        S,
-    >
+    UcanBuilder<WrappedDidWebKey<'a>, WrappedDidWebKey<'a>, Option<SystemTime>, Capabilities<'a>, S>
 where
     S: IpldStore,
 {
@@ -187,7 +177,7 @@ where
     }
 }
 
-impl<'a, S> UcanBuilder<'a, (), WrappedDidWebKey<'a>, Option<SystemTime>, Capabilities<'a>, S>
+impl<'a, S> UcanBuilder<(), WrappedDidWebKey<'a>, Option<SystemTime>, Capabilities<'a>, S>
 where
     S: IpldStore,
 {
@@ -205,14 +195,7 @@ where
 }
 
 impl<'a, S>
-    UcanBuilder<
-        'a,
-        WrappedDidWebKey<'a>,
-        WrappedDidWebKey<'a>,
-        Option<SystemTime>,
-        Capabilities<'a>,
-        S,
-    >
+    UcanBuilder<WrappedDidWebKey<'a>, WrappedDidWebKey<'a>, Option<SystemTime>, Capabilities<'a>, S>
 where
     S: IpldStore,
 {
@@ -229,7 +212,7 @@ where
 // Trait Implementations
 //--------------------------------------------------------------------------------------------------
 
-impl<'a> Default for UcanBuilder<'a, (), (), (), (), PlaceholderStore> {
+impl Default for UcanBuilder<(), (), (), (), PlaceholderStore> {
     fn default() -> Self {
         UcanBuilder {
             issuer: (),
@@ -239,8 +222,8 @@ impl<'a> Default for UcanBuilder<'a, (), (), (), (), PlaceholderStore> {
             nonce: None,
             facts: None,
             capabilities: (),
-            proofs: Proofs::<'a, PlaceholderStore>::default(),
-            store: &PlaceholderStore,
+            proofs: Proofs::<PlaceholderStore>::default(),
+            store: PlaceholderStore,
         }
     }
 }
@@ -274,7 +257,7 @@ mod tests {
             .facts(vec![])
             .capabilities(caps!())
             .proofs(vec![])
-            .store(&PlaceholderStore)
+            .store(PlaceholderStore)
             .build();
 
         assert_eq!(
@@ -298,7 +281,7 @@ mod tests {
         assert_eq!(ucan.payload.facts, Some(Facts::default()));
         assert_eq!(ucan.payload.capabilities, Capabilities::default());
         assert_eq!(ucan.payload.proofs, Proofs::default());
-        assert_eq!(ucan.payload.store, &PlaceholderStore);
+        assert_eq!(ucan.payload.store, PlaceholderStore);
 
         // Sign the UCAN
         let ucan = UcanBuilder::default()

@@ -2,12 +2,11 @@
 
 use std::{
     collections::BTreeMap,
-    ops::{Deref, DerefMut},
+    ops::{Deref, DerefMut, Index},
     str::FromStr,
 };
 
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
 
 use crate::{Ability, Caveats, ResourceUri, UcanError, UcanResult};
 
@@ -36,26 +35,40 @@ pub struct Capabilities<'a>(BTreeMap<ResourceUri<'a>, Abilities>);
 pub struct Abilities(BTreeMap<Ability, Caveats>);
 
 //--------------------------------------------------------------------------------------------------
-// Traits
-//--------------------------------------------------------------------------------------------------
-
-/// A trait for selecting a value from a hierarchical structure based on a set of arguments.
-pub trait Select<A, R> {
-    /// The error type for the selection operation.
-    type Error;
-
-    /// Selects a value from the hierarchical structure based on the provided arguments.
-    fn select(&self, args: A) -> Result<Option<&R>, Self::Error>;
-}
-
-//--------------------------------------------------------------------------------------------------
 // Methods
 //--------------------------------------------------------------------------------------------------
 
-impl Capabilities<'_> {
+impl<'a> Capabilities<'a> {
     /// Creates a new `Capabilities` instance.
     pub fn new() -> Self {
         Capabilities(BTreeMap::new())
+    }
+
+    /// Checks if the provided `resource ✕ ability ✕ caveats` access tuple is permitted by the main capabilities.
+    pub fn permits<'b>(
+        &self,
+        resource: &ResourceUri<'b>,
+        ability: &Ability,
+        caveats: &Caveats,
+    ) -> Option<(&ResourceUri<'a>, &Ability, &Caveats)> {
+        for (r, abilities) in &self.0 {
+            if !r.permits(resource) {
+                continue;
+            }
+
+            for (a, c) in &abilities.0 {
+                if a.permits(ability) && c.permits(caveats) {
+                    return Some((r, a, c));
+                }
+            }
+        }
+
+        None
+    }
+
+    /// Gets the abilities for a given resource.
+    pub fn get(&'a self, resource: &'a ResourceUri) -> Option<&Abilities> {
+        self.0.get(resource)
     }
 }
 
@@ -69,6 +82,11 @@ impl Abilities {
         }
 
         Ok(Abilities(abilities))
+    }
+
+    /// Gets the caveats for a given ability.
+    pub fn get(&self, ability: &Ability) -> Option<&Caveats> {
+        self.0.get(ability)
     }
 }
 
@@ -123,111 +141,32 @@ impl<'a> FromIterator<(ResourceUri<'a>, Abilities)> for Capabilities<'a> {
 }
 
 //--------------------------------------------------------------------------------------------------
-// Trait Implementations: Select
+// Trait Implementations: Indexing
 //--------------------------------------------------------------------------------------------------
 
-impl<U> Select<U, Abilities> for Capabilities<'_>
+impl<'a, I> Index<I> for Capabilities<'a>
 where
-    U: AsRef<str>,
+    I: AsRef<str>,
 {
-    type Error = UcanError;
+    type Output = Abilities;
 
-    fn select(&self, uri: U) -> Result<Option<&Abilities>, Self::Error> {
-        let uri = ResourceUri::from_str(uri.as_ref())?;
-        Ok(self.get(&uri))
+    fn index(&self, index: I) -> &Self::Output {
+        self.0
+            .get(&ResourceUri::from_str(index.as_ref()).unwrap())
+            .unwrap()
     }
 }
 
-impl<U, A> Select<(U, A), Caveats> for Capabilities<'_>
+impl<I> Index<I> for Abilities
 where
-    U: AsRef<str>,
-    A: AsRef<str>,
+    I: AsRef<str>,
 {
-    type Error = UcanError;
+    type Output = Caveats;
 
-    fn select(&self, (uri, ability): (U, A)) -> Result<Option<&Caveats>, Self::Error> {
-        let abilities = self.select(uri)?;
-        let ability = Ability::from_str(ability.as_ref())?;
-        let caveats = abilities.and_then(|abilities| abilities.get(&ability));
-        Ok(caveats)
-    }
-}
-
-impl<U, A> Select<(U, A, usize), BTreeMap<String, Value>> for Capabilities<'_>
-where
-    U: AsRef<str>,
-    A: AsRef<str>,
-{
-    type Error = UcanError;
-
-    fn select(
-        &self,
-        (uri, ability, caveat): (U, A, usize),
-    ) -> Result<Option<&BTreeMap<String, Value>>, Self::Error> {
-        let caveats = self.select((uri, ability))?;
-        let caveat = caveats.and_then(|caveats| caveats.get(caveat));
-        Ok(caveat)
-    }
-}
-
-impl<U, A, K> Select<(U, A, usize, K), Value> for Capabilities<'_>
-where
-    U: AsRef<str>,
-    A: AsRef<str>,
-    K: AsRef<str>,
-{
-    type Error = UcanError;
-
-    fn select(
-        &self,
-        (uri, ability, caveat, key): (U, A, usize, K),
-    ) -> Result<Option<&Value>, Self::Error> {
-        let caveat = self.select((uri, ability, caveat))?;
-        let key = caveat.and_then(|caveat| caveat.get(key.as_ref()));
-        Ok(key)
-    }
-}
-
-impl<A> Select<A, Caveats> for Abilities
-where
-    A: AsRef<str>,
-{
-    type Error = UcanError;
-
-    fn select(&self, ability: A) -> Result<Option<&Caveats>, Self::Error> {
-        let ability = Ability::from_str(ability.as_ref())?;
-        let caveats = self.get(&ability);
-        Ok(caveats)
-    }
-}
-
-impl<A> Select<(A, usize), BTreeMap<String, Value>> for Abilities
-where
-    A: AsRef<str>,
-{
-    type Error = UcanError;
-
-    fn select(
-        &self,
-        (ability, caveat): (A, usize),
-    ) -> Result<Option<&BTreeMap<String, Value>>, Self::Error> {
-        let caveats = self.select(ability)?;
-        let caveat = caveats.and_then(|caveats| caveats.get(caveat));
-        Ok(caveat)
-    }
-}
-
-impl<A, K> Select<(A, usize, K), Value> for Abilities
-where
-    A: AsRef<str>,
-    K: AsRef<str>,
-{
-    type Error = UcanError;
-
-    fn select(&self, (ability, caveat, key): (A, usize, K)) -> Result<Option<&Value>, Self::Error> {
-        let caveat = self.select((ability, caveat))?;
-        let key = caveat.and_then(|caveat| caveat.get(key.as_ref()));
-        Ok(key)
+    fn index(&self, index: I) -> &Self::Output {
+        self.0
+            .get(&Ability::from_str(index.as_ref()).unwrap())
+            .unwrap()
     }
 }
 
@@ -237,7 +176,7 @@ where
 
 #[cfg(test)]
 mod tests {
-    use crate::caps;
+    use crate::{caps, caveats};
 
     use super::*;
 
@@ -257,7 +196,7 @@ mod tests {
     }
 
     #[test]
-    fn test_capabilities_select() -> anyhow::Result<()> {
+    fn test_capabilities_indexing() -> anyhow::Result<()> {
         let capabilities = caps! {
             "example://example.com/public/photos/": {
                 "crud/read": [{}],
@@ -279,29 +218,78 @@ mod tests {
 
         assert_eq!(capabilities.len(), 2);
 
-        let abilities = capabilities
-            .select("example://example.com/public/photos/")?
-            .unwrap();
+        let abilities = &capabilities["example://example.com/public/photos/"];
 
         assert_eq!(abilities.len(), 2);
 
-        let caveats = capabilities
-            .select(("example://example.com/public/photos/", "crud/read"))?
-            .unwrap();
+        let caveats = &capabilities["example://example.com/public/photos/"]["crud/read"];
 
         assert_eq!(caveats.len(), 1);
 
-        let caveat = capabilities
-            .select(("example://example.com/public/photos/", "crud/read", 0))?
-            .unwrap();
+        let caveat = &capabilities["example://example.com/public/photos/"]["crud/read"][0];
 
         assert_eq!(caveat.len(), 0);
 
-        let value = capabilities
-            .select(("mailto:username@example.com", "msg/receive", 0, "max_count"))?
-            .unwrap();
+        let value = &capabilities["mailto:username@example.com"]["msg/receive"][0]["max_count"];
 
-        assert_eq!(value, &5);
+        assert_eq!(value, 5);
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_capabilities_permits() -> anyhow::Result<()> {
+        let main = caps! {
+            "example://example.com/public/": {
+                "crud/read": [{}],
+                "crud/delete": [{ "max_count": 5 }, { "public": true }],
+            },
+            "zerodb://app/users/": {
+                "db/table/*": [{ "rate_limit": 100 }],
+            }
+        };
+
+        assert!(main
+            .permits(
+                &"example://example.com/public/photos/".parse()?,
+                &"crud/read".parse()?,
+                &caveats![{ "public": true }]
+            )
+            .is_some());
+
+        assert!(main
+            .permits(
+                &"example://example.com/public/photos/".parse()?,
+                &"crud/delete".parse()?,
+                &caveats![{ "max_count": 5 }]
+            )
+            .is_some());
+
+        assert!(main
+            .permits(
+                &"zerodb://app/users/".parse()?,
+                &"db/table/read".parse()?,
+                &caveats![{ "rate_limit": 100 }]
+            )
+            .is_some());
+
+        // Fails
+
+        assert!(main
+            .permits(
+                &"example://example.com/".parse()?,
+                &"crud/read".parse()?,
+                &caveats![{}]
+            )
+            .is_none());
+
+        assert!(main
+            .permits(
+                &"zerodb://app/users/".parse()?,
+                &"db/table/read".parse()?,
+                &caveats![{ "rate_limit": 100 }, { "public": true }]
+            )
+            .is_none());
 
         Ok(())
     }

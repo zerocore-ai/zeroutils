@@ -1,9 +1,11 @@
-mod resolution;
+//! Proptest generators for the ucan crate.
+
+mod caveats;
 mod ucan;
 
 //--------------------------------------------------------------------------------------------------
 // Exports
 //--------------------------------------------------------------------------------------------------
 
-pub use resolution::*;
+pub use caveats::*;
 pub use ucan::*;
