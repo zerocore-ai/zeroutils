@@ -1,4 +1,8 @@
-use std::{fmt::Display, str::FromStr};
+use std::{
+    fmt::Display,
+    hash::{Hash, Hasher},
+    str::FromStr,
+};
 
 use itertools::{EitherOrBoth, Itertools};
 use serde::{Deserialize, Serialize};
@@ -35,7 +39,7 @@ pub const WILDCARD: &str = "*";
 ///
 /// [ucan-ability]: https://github.com/ucan-wg/spec?tab=readme-ov-file#51-ucan-delegation
 /// [ucan-scheme]: https://github.com/ucan-wg/spec?tab=readme-ov-file#41-ucan
-#[derive(PartialEq, Eq, PartialOrd, Ord, Clone, Debug)]
+#[derive(PartialEq, Eq, PartialOrd, Ord, Clone, Debug, Hash)]
 pub enum Ability {
     /// Resources referenced using the [`ucan:` delegation scheme][ucan-scheme] have the [`ucan/*` ability][ucan-ability], which represents
     /// all possible abilities for that given resource.
@@ -57,7 +61,7 @@ pub enum Ability {
 }
 
 /// Represents a path in an ability, such as `http/get` or `db/table/read`.
-#[derive(PartialEq, Eq, PartialOrd, Ord, Clone, Debug)]
+#[derive(PartialEq, Eq, PartialOrd, Ord, Clone, Debug, Hash)]
 pub struct Path {
     segments: Vec<PathSegment>,
 }
@@ -345,6 +349,15 @@ impl PartialEq for PathSegment {
 }
 
 impl Eq for PathSegment {}
+
+impl Hash for PathSegment {
+    fn hash<H>(&self, hasher: &mut H)
+    where
+        H: Hasher,
+    {
+        self.to_string().hash(hasher)
+    }
+}
 
 //--------------------------------------------------------------------------------------------------
 // Tests

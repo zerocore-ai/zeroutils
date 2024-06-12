@@ -1,4 +1,8 @@
-use std::ops::{Deref, Index};
+use std::{
+    fmt::Display,
+    hash::{Hash, Hasher},
+    ops::{Deref, Index},
+};
 
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
@@ -199,6 +203,30 @@ impl Index<usize> for Caveats {
     }
 }
 
+impl Display for Caveats {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let json_array = Value::Array(
+            self.0
+                .clone()
+                .into_iter()
+                .map(Value::Object)
+                .collect::<Vec<_>>(),
+        );
+
+        write!(f, "{}", json_array)
+    }
+}
+
+impl Hash for Caveats {
+    fn hash<H>(&self, state: &mut H)
+    where
+        H: Hasher,
+    {
+        // TODO: Not optimal, but works for now
+        self.to_string().hash(state);
+    }
+}
+
 //--------------------------------------------------------------------------------------------------
 // Tests
 //--------------------------------------------------------------------------------------------------
@@ -230,7 +258,7 @@ mod tests {
         let caveats = caveats! [{
             "max_count": 5,
             "templates": ["newsletter", "marketing"]
-        }];
+        }]?;
 
         assert_eq!(caveats[0]["max_count"], 5);
         assert_eq!(caveats[0]["templates"][0], "newsletter");
@@ -242,44 +270,55 @@ mod tests {
     fn test_caveat_is_subset() -> anyhow::Result<()> {
         // Equal
 
-        let this = caveats![{}];
+        let this = caveats![{}]?;
 
         assert!(Caveats::is_subset_object(&this[0], &this[0]));
 
         let this = caveats! [{
             "max_count": 5,
             "templates": ["newsletter"]
-        }];
+        }]?;
 
         assert!(Caveats::is_subset_object(&this[0], &this[0]));
 
         // Subset
 
-        let this = caveats![{}];
-        let that = caveats! [{"max_count": 5}];
+        let this = caveats![{}]?;
+        let that = caveats! [{"max_count": 5}]?;
+
+        assert!(Caveats::is_subset_object(&this[0], &that[0]));
+
+        let this = caveats! [{
+            "max_count": 5,
+        }]?;
+
+        let that = caveats! [{
+            "max_count": 5,
+            "status": "active",
+        }]?;
 
         assert!(Caveats::is_subset_object(&this[0], &that[0]));
 
         let this = caveats! [{
             "templates": []
-        }];
+        }]?;
 
         let that = caveats! [{
             "templates": ["newsletter"]
-        }];
+        }]?;
 
         assert!(Caveats::is_subset_object(&this[0], &that[0]));
 
         let this = caveats! [{
             "max_count": 5,
             "templates": ["newsletter"]
-        }];
+        }]?;
 
         let that = caveats! [{
             "max_count": 5,
             "status": "active",
             "templates": ["newsletter", "marketing"]
-        }];
+        }]?;
 
         assert!(Caveats::is_subset_object(&this[0], &that[0]));
 
@@ -288,7 +327,7 @@ mod tests {
             "templates": [{
                 "newsletter": true
             }]
-        }];
+        }]?;
 
         let that = caveats! [{
             "max_count": 5,
@@ -299,7 +338,7 @@ mod tests {
                 "newsletter": true,
                 "types": ["marketing"]
             }]
-        }];
+        }]?;
 
         assert!(Caveats::is_subset_object(&this[0], &that[0]));
 
@@ -307,31 +346,31 @@ mod tests {
 
         let this = caveats! [{
             "max_count": 5,
-        }];
+        }]?;
 
-        let that = caveats![{}];
+        let that = caveats![{}]?;
 
         assert!(!Caveats::is_subset_object(&this[0], &that[0]));
 
         let this = caveats! [{
             "max_count": 5,
-        }];
+        }]?;
 
         let that = caveats! [{
             "max_count": "5"
-        }];
+        }]?;
 
         assert!(!Caveats::is_subset_object(&this[0], &that[0]));
 
         let this = caveats! [{
             "max_count": 5,
             "templates": ["newsletter"]
-        }];
+        }]?;
 
         let that = caveats! [{
             "max_count": 5,
             "status": "active",
-        }];
+        }]?;
 
         assert!(!Caveats::is_subset_object(&this[0], &that[0]));
 
@@ -339,12 +378,12 @@ mod tests {
             "max_count": 5,
             "status": "active",
             "templates": ["newsletter", "marketing"]
-        }];
+        }]?;
 
         let that = caveats! [{
             "max_count": 5,
             "templates": ["newsletter"]
-        }];
+        }]?;
 
         assert!(!Caveats::is_subset_object(&this[0], &that[0]));
 
@@ -353,18 +392,29 @@ mod tests {
 
     #[test]
     fn test_caveats_permits() -> anyhow::Result<()> {
-        let main = caveats![{}];
-        let requested = caveats![{"status": "active"}];
+        let main = caveats![{}]?;
+        let requested = caveats![{}]?;
 
         assert!(main.permits(&requested));
 
-        let main = caveats![{"status": "active"}, {"max_count": 5}];
-        let requested = caveats![{"status": "active"}];
+        let main = caveats![{"status": "active"}]?;
+        let requested = caveats![{"status": "active"}]?;
 
         assert!(main.permits(&requested));
 
-        let main = caveats![{"status": "active"}, {"max_count": 5}];
-        let requested = caveats![{"status": "active"}];
+        let main = caveats![{}]?;
+        let requested = caveats![{"status": "active"}]?;
+
+        assert!(main.permits(&requested));
+
+        let main = caveats![{"status": "active"}, {"max_count": 5}]?;
+        let requested = caveats![{"status": "active"}]?;
+
+        assert!(main.permits(&requested));
+
+        let main = caveats![{"status": "active"}, {"max_count": 5}]?;
+        let requested =
+            caveats![{"status": "active"}, {"max_count": 5, "templates": ["newsletter"]}]?;
 
         assert!(main.permits(&requested));
 
@@ -376,7 +426,7 @@ mod tests {
             {
                 "public": true
             }
-        ];
+        ]?;
 
         let requested = caveats! [
             {
@@ -384,19 +434,19 @@ mod tests {
                 "status": "active",
                 "templates": ["newsletter", "marketing"]
             }
-        ];
+        ]?;
 
         assert!(main.permits(&requested));
 
         // Fails
 
-        let main = caveats![{"status": "active"}];
-        let requested = caveats![{}];
+        let main = caveats![{"status": "active"}]?;
+        let requested = caveats![{}]?;
 
         assert!(!main.permits(&requested));
 
-        let main = caveats![{"status": "active"}];
-        let requested = caveats![{"status": "active"}, {"max_count": 5}];
+        let main = caveats![{"status": "active"}]?;
+        let requested = caveats![{"status": "active"}, {"max_count": 5}]?;
 
         assert!(!main.permits(&requested));
 

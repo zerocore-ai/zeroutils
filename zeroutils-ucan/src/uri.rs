@@ -1,10 +1,16 @@
-use std::{cmp, fmt, str::FromStr};
+use std::{
+    cmp,
+    fmt::{self, Debug, Display},
+    hash::{Hash, Hasher},
+    ops::Deref,
+    str::FromStr,
+};
 
 use fluent_uri::Uri;
 use lazy_static::lazy_static;
 use libipld::Cid;
 use regex::Regex;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use zeroutils_did_wk::WrappedDidWebKey;
 
 use crate::UcanError;
@@ -20,17 +26,18 @@ use crate::UcanError;
 ///
 /// `did:wk` with locator components are not supported in URIs.
 #[allow(clippy::large_enum_variant)]
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum ResourceUri<'a> {
     /// A reference to a specific proof within the UCAN.
     Reference(ProofReference<'a>),
 
-    /// Any other URI format.
-    Other(OtherUri),
+    /// Non `ucan:` URIs.
+    Other(NonUcanUri),
 }
 
 /// A URI that is not a UCAN-specific reference.
-pub type OtherUri = Uri<String>;
+#[derive(Debug, Clone)]
+pub struct NonUcanUri(Uri<String>);
 
 /// A reference to a proof within a UCAN, defined by various UCAN-specific URI schemes.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -133,7 +140,7 @@ impl ResourceUri<'_> {
 }
 
 //--------------------------------------------------------------------------------------------------
-// Trait Implementations
+// Trait Implementations: ProofReference
 //--------------------------------------------------------------------------------------------------
 
 impl FromStr for ProofReference<'_> {
@@ -165,21 +172,7 @@ impl FromStr for ProofReference<'_> {
     }
 }
 
-impl<'a> FromStr for ResourceUri<'a> {
-    type Err = UcanError;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        if s.starts_with("ucan:") {
-            ProofReference::from_str(s).map(ResourceUri::Reference)
-        } else {
-            Uri::parse_from(s.to_owned())
-                .map_err(|(_, e)| UcanError::UriParseError(e))
-                .map(ResourceUri::Other)
-        }
-    }
-}
-
-impl<'a> fmt::Display for ProofReference<'a> {
+impl<'a> Display for ProofReference<'a> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             ProofReference::AllUcansTransient => write!(f, "ucan:*"),
@@ -193,7 +186,86 @@ impl<'a> fmt::Display for ProofReference<'a> {
     }
 }
 
-impl<'a> fmt::Display for ResourceUri<'a> {
+//--------------------------------------------------------------------------------------------------
+// Trait Implementations: NonUcanUri
+//--------------------------------------------------------------------------------------------------
+
+impl FromStr for NonUcanUri {
+    type Err = UcanError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Ok(NonUcanUri(
+            Uri::parse_from(s.to_owned()).map_err(|(_, e)| UcanError::UriParseError(e))?,
+        ))
+    }
+}
+
+impl From<Uri<String>> for NonUcanUri {
+    fn from(uri: Uri<String>) -> Self {
+        NonUcanUri(uri)
+    }
+}
+
+impl Deref for NonUcanUri {
+    type Target = Uri<String>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl Display for NonUcanUri {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
+impl PartialEq for NonUcanUri {
+    fn eq(&self, other: &Self) -> bool {
+        self.0.as_str() == other.0.as_str()
+    }
+}
+
+impl Eq for NonUcanUri {}
+
+impl PartialOrd for NonUcanUri {
+    fn partial_cmp(&self, other: &Self) -> Option<cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for NonUcanUri {
+    fn cmp(&self, other: &Self) -> cmp::Ordering {
+        self.0.as_str().cmp(other.0.as_str())
+    }
+}
+
+impl Hash for NonUcanUri {
+    fn hash<H>(&self, state: &mut H)
+    where
+        H: Hasher,
+    {
+        self.0.as_str().hash(state)
+    }
+}
+
+//--------------------------------------------------------------------------------------------------
+// Trait Implementations: ResourceUri
+//--------------------------------------------------------------------------------------------------
+
+impl<'a> FromStr for ResourceUri<'a> {
+    type Err = UcanError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        if s.starts_with("ucan:") {
+            ProofReference::from_str(s).map(ResourceUri::Reference)
+        } else {
+            NonUcanUri::from_str(s).map(ResourceUri::Other)
+        }
+    }
+}
+
+impl<'a> Display for ResourceUri<'a> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             ResourceUri::Reference(pr) => write!(f, "{}", pr),
@@ -211,7 +283,7 @@ impl Serialize for ResourceUri<'_> {
     }
 }
 
-impl<'a, 'de> serde::Deserialize<'de> for ResourceUri<'a> {
+impl<'a, 'de> Deserialize<'de> for ResourceUri<'a> {
     fn deserialize<D>(deserializer: D) -> Result<ResourceUri<'a>, D::Error>
     where
         D: serde::Deserializer<'de>,
@@ -220,30 +292,6 @@ impl<'a, 'de> serde::Deserialize<'de> for ResourceUri<'a> {
         ResourceUri::from_str(&s).map_err(serde::de::Error::custom)
     }
 }
-
-impl PartialOrd for ResourceUri<'_> {
-    fn partial_cmp(&self, other: &Self) -> Option<cmp::Ordering> {
-        Some(self.to_string().cmp(&other.to_string()))
-    }
-}
-
-impl Ord for ResourceUri<'_> {
-    fn cmp(&self, other: &Self) -> cmp::Ordering {
-        self.to_string().cmp(&other.to_string())
-    }
-}
-
-impl PartialEq for ResourceUri<'_> {
-    fn eq(&self, other: &Self) -> bool {
-        match (self, other) {
-            (ResourceUri::Reference(pr1), ResourceUri::Reference(pr2)) => pr1 == pr2,
-            (ResourceUri::Other(uri1), ResourceUri::Other(uri2)) => uri1.as_str() == uri2.as_str(),
-            _ => false,
-        }
-    }
-}
-
-impl Eq for ResourceUri<'_> {}
 
 //--------------------------------------------------------------------------------------------------
 // Tests
@@ -303,10 +351,7 @@ mod tests {
         let uri = ResourceUri::from_str("https://example.com")?;
         assert_eq!(
             uri,
-            ResourceUri::Other(
-                Uri::parse_from("https://example.com".to_string())
-                    .map_err(|(_, e)| UcanError::UriParseError(e))?
-            )
+            ResourceUri::Other(NonUcanUri::from_str("https://example.com")?)
         );
 
         Ok(())
@@ -345,10 +390,7 @@ mod tests {
             "ucan:bafkreihogico5an3e2xy3fykalfwxxry7itbhfcgq6f47sif6d7w6uk2ze"
         );
 
-        let uri = ResourceUri::Other(
-            Uri::parse_from("https://example.com".to_string())
-                .map_err(|(_, e)| UcanError::UriParseError(e))?,
-        );
+        let uri = ResourceUri::Other(NonUcanUri::from_str("https://example.com")?);
         assert_eq!(uri.to_string(), "https://example.com");
 
         Ok(())

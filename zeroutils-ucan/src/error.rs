@@ -1,6 +1,6 @@
 //! Error types of the zeroraft crate.
 
-use std::time::SystemTime;
+use std::{collections::HashSet, time::SystemTime};
 
 use libipld::{cid::Version, Cid};
 use thiserror::Error;
@@ -70,15 +70,15 @@ pub enum UcanError {
 
     /// UCAN expired
     #[error("UCAN expired: {0:?}")]
-    Expired(SystemTime),
+    Expired(Option<SystemTime>),
 
     /// UCAN not yet valid
     #[error("UCAN not yet valid: {0:?}")]
-    NotYetValid(SystemTime),
+    NotYetValid(Option<SystemTime>),
 
     /// Invalid time bounds
     #[error("Invalid time bounds: nbf: {0:?}, exp: {1:?}")]
-    InvalidTimeBounds(SystemTime, SystemTime),
+    InvalidTimeBounds(Option<SystemTime>, Option<SystemTime>),
 
     /// Invalid proof Cid version
     #[error("Invalid proof Cid version: {0:?}")]
@@ -121,44 +121,43 @@ pub enum UcanError {
     UnsupportedTokenType(String),
 
     /// Attenuation failed
-    #[error("Attenuation failed: {0}")]
+    #[error(transparent)]
     AttenuationError(#[from] AttenuationError),
 
     /// Permission error
-    #[error("Permission error: {0}")]
+    #[error(transparent)]
     PermissionError(#[from] PermissionError),
 
     /// Unresolved capabilities
-    #[error("Unresolved capabilities: `UcanWithCids`: {ucan_with_cids:?}, `UcanWithAuds`: {ucan_with_auds:?}, `CapWithRootIss`: {cap_with_root_iss:?}")]
-    UnresolvedCapabilities {
-        /// List of unresolved `UcanWithCid`s.
-        ucan_with_cids: Vec<UnresolvedUcanWithCid>,
-
-        /// List of unresolved `UcanWithAud`s.
-        ucan_with_auds: Vec<UnresolvedUcanWithAud>,
-
-        /// List of unresolved `CapWithRootIss`s.
-        cap_with_root_iss: Vec<UnresolvedCapWithRootIss>,
-    },
+    #[error("Unresolved capabilities: {0:?}")]
+    UnresolvedCapabilities(Box<Unresolved>, Trace),
 
     /// Invalid UCAN resource ability
-    #[error("Invalid UCAN resource ability: {0:?}")]
+    #[error("Invalid UCAN resource ability: {0:?}. Expected `ucan/*`")]
     InvalidUcanResourceAbility(Abilities),
 
     /// Invalid UCAN resource caveats
-    #[error("Invalid UCAN resource caveats: {0:?}")]
+    #[error("Invalid UCAN resource caveats: {0}. Expected `[{{}}]`")]
     InvalidUcanResourceCaveats(Caveats),
+
+    /// Expiration constraint violated
+    #[error("Expiration constraint violated: {0:?}, {1:?}")]
+    ExpirationConstraintViolated(Option<SystemTime>, Option<SystemTime>),
+
+    /// Not before constraint violated
+    #[error("Not before constraint violated: {0:?}, {1:?}")]
+    NotBeforeConstraintViolated(Option<SystemTime>, Option<SystemTime>),
 }
 
 /// Defines the attenuation errors that can occur in UCAN operations.
 #[derive(Debug, Error)]
 pub enum AttenuationError {
     /// Capability not delegated by root issuer
-    #[error("Capability not delegated by root issuer: {0:?}, trace: {1:?}")]
+    #[error("Capability not delegated by root issuer: {0}, trace: {1:?}")]
     CapabilityNotDelegatedByRootIssuer(CapabilityTuple, Trace),
 
     /// Capability not permitted
-    #[error("Capability not permitted in scope: {0:?}, trace: {1:?}")]
+    #[error("Capability not permitted in scope: {0}, trace: {1:?}")]
     CapabilityNotPermittedInScope(CapabilityTuple, Trace),
 
     /// Abilities not permitted in scope
@@ -166,11 +165,11 @@ pub enum AttenuationError {
     AbilitiesNotPermittedInScope(Abilities, Trace),
 
     /// Audience did not match
-    #[error("Audience did not match: {0:?}, trace: {1:?}")]
+    #[error("Audience did not match: {0}, trace: {1:?}")]
     AudienceDidNotMatch(String, Trace),
 
     /// Scheme not permitted in scope
-    #[error("Scheme not permitted in scope: {0:?}, trace: {1:?}")]
+    #[error("Scheme not permitted in scope: {0}, trace: {1:?}")]
     SchemeNotPermittedInScope(String, Trace),
 }
 
@@ -188,6 +187,36 @@ pub enum PermissionError {
     /// Caveats not permitted
     #[error("Caveats not permitted: allowed caveats: {0}, requested caveats: {1}")]
     UnpermittedCaveats(String, String),
+}
+
+/// Unresolved capabilities
+#[derive(Debug, Clone)]
+pub struct Unresolved(
+    HashSet<UnresolvedUcanWithCid>,
+    HashSet<UnresolvedUcanWithAud>,
+    HashSet<UnresolvedCapWithRootIss>,
+);
+
+//--------------------------------------------------------------------------------------------------
+// Trait Implementations
+//--------------------------------------------------------------------------------------------------
+
+impl
+    From<(
+        HashSet<UnresolvedUcanWithCid>,
+        HashSet<UnresolvedUcanWithAud>,
+        HashSet<UnresolvedCapWithRootIss>,
+    )> for Unresolved
+{
+    fn from(
+        value: (
+            HashSet<UnresolvedUcanWithCid>,
+            HashSet<UnresolvedUcanWithAud>,
+            HashSet<UnresolvedCapWithRootIss>,
+        ),
+    ) -> Self {
+        Self(value.0, value.1, value.2)
+    }
 }
 
 //--------------------------------------------------------------------------------------------------

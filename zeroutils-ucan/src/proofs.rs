@@ -118,7 +118,6 @@ where
             .get_or_try_init(async {
                 let bytes = store.get_bytes(self.cid).await?;
                 let ucan_str = std::str::from_utf8(&bytes)?;
-                println!("Fetched UCAN: {:?}", ucan_str); // TODO: Remove
                 SignedUcan::with_store(ucan_str, store.clone())
             })
             .await
@@ -271,7 +270,10 @@ where
 
 #[cfg(test)]
 mod tests {
-    use std::{str::FromStr, time::UNIX_EPOCH};
+    use std::{
+        str::FromStr,
+        time::{Duration, SystemTime},
+    };
 
     use zeroutils_did_wk::{Base, WrappedDidWebKey};
     use zeroutils_key::{Ed25519KeyPair, KeyPairGenerate};
@@ -302,8 +304,8 @@ mod tests {
 
         let signed_ucan = Ucan::builder()
             .audience(WrappedDidWebKey::from_key(&audience_key, Base::Base64Url)?)
-            .expiration(UNIX_EPOCH + std::time::Duration::from_secs(3_600_000))
-            .capabilities(caps!())
+            .expiration(SystemTime::now() + Duration::from_secs(3_600_000))
+            .capabilities(caps!()?)
             .sign(&issuer_key)?;
 
         let ucan_encoded = signed_ucan.to_string();

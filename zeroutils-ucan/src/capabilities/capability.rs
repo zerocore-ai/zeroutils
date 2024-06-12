@@ -2,13 +2,14 @@
 
 use std::{
     collections::BTreeMap,
+    fmt::{self, Display},
     ops::{Deref, Index},
     str::FromStr,
 };
 
 use serde::{Deserialize, Serialize};
 
-use crate::{Ability, Caveats, ResourceUri, UcanError, UcanResult};
+use crate::{Ability, Caveats, NonUcanUri, ResourceUri, UcanError, UcanResult};
 
 //--------------------------------------------------------------------------------------------------
 // Types
@@ -33,6 +34,10 @@ pub struct Capabilities<'a>(BTreeMap<ResourceUri<'a>, Abilities>);
 /// [abilities]: https://github.com/ucan-wg/spec?tab=readme-ov-file#3262-abilities
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Abilities(BTreeMap<Ability, Caveats>);
+
+/// A capability tuple is a tuple of a resource ✕ ability ✕ caveats.
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub struct CapabilityTuple(pub NonUcanUri, pub Ability, pub Caveats);
 
 //--------------------------------------------------------------------------------------------------
 // Methods
@@ -139,6 +144,16 @@ impl Deref for Abilities {
 
     fn deref(&self) -> &Self::Target {
         &self.0
+    }
+}
+
+//--------------------------------------------------------------------------------------------------
+// Trait Implementations: Displays
+//--------------------------------------------------------------------------------------------------
+
+impl Display for CapabilityTuple {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{} ✕ {} ✕ {}", self.0, self.1, self.2)
     }
 }
 
@@ -291,7 +306,7 @@ mod tests {
                     }
                 ]
             },
-        };
+        }?;
 
         assert_eq!(capabilities.len(), 2);
 
@@ -324,13 +339,13 @@ mod tests {
             "zerodb://app/users/": {
                 "db/table/*": [{ "rate_limit": 100 }],
             }
-        };
+        }?;
 
         assert!(main
             .permits(
                 &"example://example.com/public/photos/".parse()?,
                 &"crud/read".parse()?,
-                &caveats![{ "public": true }]
+                &caveats![{ "public": true }]?
             )
             .is_some());
 
@@ -338,7 +353,7 @@ mod tests {
             .permits(
                 &"example://example.com/public/photos/".parse()?,
                 &"crud/delete".parse()?,
-                &caveats![{ "max_count": 5 }]
+                &caveats![{ "max_count": 5 }]?
             )
             .is_some());
 
@@ -346,7 +361,7 @@ mod tests {
             .permits(
                 &"zerodb://app/users/".parse()?,
                 &"db/table/read".parse()?,
-                &caveats![{ "rate_limit": 100 }]
+                &caveats![{ "rate_limit": 100 }]?
             )
             .is_some());
 
@@ -356,7 +371,7 @@ mod tests {
             .permits(
                 &"example://example.com/".parse()?,
                 &"crud/read".parse()?,
-                &caveats![{}]
+                &caveats![{}]?
             )
             .is_none());
 
@@ -364,7 +379,7 @@ mod tests {
             .permits(
                 &"zerodb://app/users/".parse()?,
                 &"db/table/read".parse()?,
-                &caveats![{ "rate_limit": 100 }, { "public": true }]
+                &caveats![{ "rate_limit": 100 }, { "public": true }]?
             )
             .is_none());
 

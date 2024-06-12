@@ -12,20 +12,20 @@ macro_rules! caps {
             ]),+ $(,)?
         }
     ),* $(,)?} => {
-        {
+        (|| {
             #[allow(unused_mut)]
             let mut capabilities = $crate::Capabilities::new();
             $(
                 let mut ability_list = std::collections::BTreeMap::new();
                 $(
-                    let caveats = $crate::caveats![$($caveats),*];
-                    ability_list.insert($ability.parse().unwrap(), caveats);
+                    let caveats = $crate::caveats![$($caveats),*]?;
+                    ability_list.insert($ability.parse()?, caveats);
                 )+
-                let abilities = $crate::Abilities::from_iter(ability_list).unwrap();
-                capabilities.insert(<$crate::ResourceUri as std::str::FromStr>::from_str($uri).unwrap(), abilities).unwrap();
+                let abilities = $crate::Abilities::from_iter(ability_list)?;
+                capabilities.insert(<$crate::ResourceUri as std::str::FromStr>::from_str($uri)?, abilities)?;
             )*
-            capabilities
-        }
+            $crate::Ok(capabilities)
+        })()
     };
 }
 
@@ -33,14 +33,14 @@ macro_rules! caps {
 #[macro_export]
 macro_rules! abilities {
     { $( $ability:literal : [ $( $caveats:tt ),* ]),* $(,)? } => {
-        {
-            let mut abilities = std::collections::BTreeMap::new();
+        (|| {
+            let mut map = std::collections::BTreeMap::new();
             $(
-                let caveats = $crate::caveats![$($caveats),*];
-                abilities.insert($ability.parse().unwrap(), caveats);
+                let caveats = $crate::caveats![$($caveats),*]?;
+                map.insert($ability.parse()?, caveats);
             )*
-            $crate::Abilities::from_iter(abilities).unwrap()
-        }
+            $crate::Abilities::from_iter(map)
+        })()
     };
 }
 
@@ -54,17 +54,17 @@ macro_rules! caveats {
             let mut caveat_list = std::vec::Vec::new();
             $(
                 #[allow(unused_mut)]
-                let mut caveat = ::serde_json::Map::new();
+                let mut caveat = $crate::serde_json::Map::new();
                 $(
                     caveat.insert($caveat.to_string(), $crate::serde_json::json!($json));
                 )*
                 caveat_list.push(caveat);
             )*
             if caveat_list.is_empty() {
-                caveat_list.push(::serde_json::Map::new());
+                caveat_list.push($crate::serde_json::Map::new());
             }
 
-            $crate::Caveats::from_iter(caveat_list).unwrap()
+            $crate::Caveats::from_iter(caveat_list)
         }
     };
 }
@@ -105,7 +105,7 @@ mod tests {
                     {"type": "TXT"}
                 ]
             }
-        };
+        }?;
 
         let expected_capabilities = {
             let mut capabilities = Capabilities::new();
@@ -157,7 +157,7 @@ mod tests {
         let caveats = caveats! [{
             "max_count": 5,
             "templates": ["newsletter", "marketing"]
-        }];
+        }]?;
 
         let expected_caveats = Caveats::from_iter([Map::from_iter(vec![
             ("max_count".into(), serde_json::json!(5)),
@@ -177,7 +177,7 @@ mod tests {
         let abilities = abilities! {
             "crud/read": [{}],
             "crud/delete": [{}],
-        };
+        }?;
 
         let expected_abilities = Abilities::from_iter([
             ("crud/read".parse()?, Caveats::any()),

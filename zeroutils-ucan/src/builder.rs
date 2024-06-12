@@ -160,7 +160,7 @@ where
     S: IpldStore,
 {
     /// Builds a UCAN from the specified components.
-    pub fn build(self) -> Ucan<'a, S, ()> {
+    pub fn build(self) -> UcanResult<Ucan<'a, S, ()>> {
         let payload = UcanPayload {
             issuer: self.issuer,
             audience: self.audience,
@@ -173,7 +173,9 @@ where
             store: self.store,
         };
 
-        Ucan::from_parts((), payload, ()) // TODO: call ucan.validate() here
+        let ucan = Ucan::from_parts((), payload, ());
+        ucan.validate()?;
+        Ok(ucan)
     }
 }
 
@@ -188,7 +190,7 @@ where
     {
         let issuer_did = WrappedDidWebKey::from_key(keypair, Base::Base58Btc)?;
         self.issuer(issuer_did)
-            .build()
+            .build()?
             .use_alg(keypair.alg())
             .sign(keypair)
     }
@@ -204,7 +206,7 @@ where
     where
         K: Sign + JwsAlgName + GetPublicKey,
     {
-        self.build().use_alg(keypair.alg()).sign(keypair) // TODO: call ucan.validate() here
+        self.build()?.sign(keypair)
     }
 }
 
@@ -255,10 +257,10 @@ mod tests {
             .not_before(now)
             .nonce("1100263a4012")
             .facts(vec![])
-            .capabilities(caps!())
+            .capabilities(caps!()?)
             .proofs(vec![])
             .store(PlaceholderStore)
-            .build();
+            .build()?;
 
         assert_eq!(
             ucan.payload.issuer,
@@ -291,7 +293,7 @@ mod tests {
             .not_before(now)
             .nonce("1100263a4012")
             .facts(vec![])
-            .capabilities(caps!())
+            .capabilities(caps!()?)
             .proofs(vec![])
             .sign(&Ed25519KeyPair::generate(&mut rand::thread_rng())?)?;
 

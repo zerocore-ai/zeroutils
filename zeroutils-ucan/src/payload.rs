@@ -175,23 +175,20 @@ where
 
     /// Checks if the UCAN's time bounds (`exp`, `nbf`) are valid relative to the current time (`now`).
     pub fn validate_time_bounds(&self) -> UcanResult<()> {
-        if let (Some(exp), Some(nbf)) = (self.expiration, self.not_before) {
-            if exp < nbf {
-                return Err(UcanError::InvalidTimeBounds(nbf, exp));
-            }
+        if self.expiration < self.not_before {
+            return Err(UcanError::InvalidTimeBounds(
+                self.not_before,
+                self.expiration,
+            ));
         }
 
         let now = SystemTime::now();
-        if let Some(exp) = self.expiration {
-            if now > exp {
-                return Err(UcanError::Expired(exp));
-            }
+        if self.expiration.map_or(false, |t| t < now) {
+            return Err(UcanError::Expired(self.expiration));
         }
 
-        if let Some(nbf) = self.not_before {
-            if now < nbf {
-                return Err(UcanError::NotYetValid(nbf));
-            }
+        if self.not_before.map_or(false, |t| t > now) {
+            return Err(UcanError::NotYetValid(self.not_before));
         }
 
         Ok(())

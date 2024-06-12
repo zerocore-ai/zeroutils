@@ -151,11 +151,6 @@ where
         }
     }
 
-    /// Validates the UCAN, ensuring that it is well-formed.
-    pub fn validate(&self) -> UcanResult<()> {
-        self.payload.validate_time_bounds()
-    }
-
     /// Checks if the UCAN is addressed to the specified DID.
     pub fn addressed_to(&self, did: &WrappedDidWebKey) -> bool {
         self.payload.audience() == did
@@ -181,6 +176,11 @@ where
             signature: signature.into(),
         })
     }
+
+    /// Validates the UCAN, ensuring that it is well-formed.
+    pub fn validate(&self) -> UcanResult<()> {
+        self.payload.validate_time_bounds()
+    }
 }
 
 impl<'a, S> SignedUcan<'a, S>
@@ -193,35 +193,52 @@ where
         Ok(ucan.use_store(store))
     }
 
-    /// Verifies the signature of the current UCAN against the public key of the issuer.
-    pub fn verify_principal_alignment<'b>(
+    /// Validates the UCAN, ensuring that it is well-formed.
+    pub fn validate(&self) -> UcanResult<()> {
+        self.payload.validate_time_bounds()?;
+        self.verify_signature()
+    }
+
+    /// Checks if the UCAN does not exceed the constraints of the proof UCAN.
+    pub fn validate_proof_constraints<'b>(
         &self,
         proof_ucan: &'b SignedUcan<'b, S>,
     ) -> UcanResult<()> {
-        let our_issuer = self.payload.issuer();
-        let their_audience = proof_ucan.payload.audience();
-
         // Check if their `aud` field matches our `iss` field
-        if our_issuer != their_audience {
+        if self.payload.issuer != proof_ucan.payload.audience {
             return Err(UcanError::PrincipalAlignmentFailed(
-                our_issuer.to_string(),
-                their_audience.to_string(),
+                self.payload.issuer.to_string(),
+                proof_ucan.payload.audience.to_string(),
             ));
         }
 
-        // Check if issuer's key signed our UCAN
-        self.verify_signature(our_issuer.public_key())?;
+        // Check time bound constraints.
+        if self.payload.expiration > proof_ucan.payload.expiration {
+            return Err(UcanError::ExpirationConstraintViolated(
+                self.payload.expiration,
+                proof_ucan.payload.expiration,
+            ));
+        }
+
+        if self.payload.not_before < proof_ucan.payload.not_before {
+            return Err(UcanError::NotBeforeConstraintViolated(
+                self.payload.not_before,
+                proof_ucan.payload.not_before,
+            ));
+        }
 
         Ok(())
     }
 
-    /// Verifies the signature of the current UCAN against the provided key.
-    pub fn verify_signature<K>(&self, key: K) -> UcanResult<()>
-    where
-        K: Verify,
-    {
+    /// Verifies the signature is truly signed by the issuer.
+    pub fn verify_signature(&self) -> UcanResult<()> {
         let unsigned_ucan = UnsignedUcan::from_parts(self.header.clone(), self.payload.clone(), ());
-        key.verify(unsigned_ucan.to_string().as_bytes(), self.signature())?;
+
+        self.payload
+            .issuer
+            .public_key()
+            .verify(unsigned_ucan.to_string().as_bytes(), self.signature())?;
+
         Ok(())
     }
 
@@ -408,19 +425,19 @@ mod tests {
         let ucan = Ucan::builder()
             .issuer("did:wk:m5wECtxi2kxRme2uhswu46BwzRtqvhEznWKucFrrph0I7+uo")
             .audience("did:wk:b5ua5l4wgcp46zrtn3ihjjmu5gbyhusmyt5bianl5ov2yrvj7wnh4vti")
-            .expiration(UNIX_EPOCH + Duration::from_secs(3600))
+            .expiration(UNIX_EPOCH + Duration::from_secs(3_600_000_000)) // TODO: Change to chrono date
             .not_before(UNIX_EPOCH)
             .nonce("1100263a4012")
             .facts(vec![])
-            .capabilities(caps!())
+            .capabilities(caps!()?)
             .proofs(vec![])
-            .build();
+            .build()?;
 
         let serialized = serde_json::to_string(&ucan)?;
         tracing::debug!(?serialized);
         assert_eq!(
             serialized,
-            r#"{"header":null,"payload":{"ucv":"0.10.0-alpha.1","iss":"did:wk:m5wECtxi2kxRme2uhswu46BwzRtqvhEznWKucFrrph0I7+uo","aud":"did:wk:b5ua5l4wgcp46zrtn3ihjjmu5gbyhusmyt5bianl5ov2yrvj7wnh4vti","exp":3600,"nbf":0,"nnc":"1100263a4012","fct":{},"cap":{}}}"#
+            r#"{"header":null,"payload":{"ucv":"0.10.0-alpha.1","iss":"did:wk:m5wECtxi2kxRme2uhswu46BwzRtqvhEznWKucFrrph0I7+uo","aud":"did:wk:b5ua5l4wgcp46zrtn3ihjjmu5gbyhusmyt5bianl5ov2yrvj7wnh4vti","exp":3600000000,"nbf":0,"nnc":"1100263a4012","fct":{},"cap":{}}}"#
         );
 
         let deserialized: UnsignedUcan<PlaceholderStore> = serde_json::from_str(&serialized)?;
@@ -435,11 +452,11 @@ mod tests {
         let signed_ucan = Ucan::builder()
             .issuer("did:wk:m5wECtxi2kxRme2uhswu46BwzRtqvhEznWKucFrrph0I7+uo")
             .audience("did:wk:b5ua5l4wgcp46zrtn3ihjjmu5gbyhusmyt5bianl5ov2yrvj7wnh4vti")
-            .expiration(UNIX_EPOCH + Duration::from_secs(3600))
+            .expiration(UNIX_EPOCH + Duration::from_secs(3_600_000_000)) // TODO: Change to chrono date
             .not_before(UNIX_EPOCH)
             .nonce("1100263a4012")
             .facts(vec![])
-            .capabilities(caps!())
+            .capabilities(caps!()?)
             .proofs(vec![])
             .sign(&keypair)?;
 
@@ -447,7 +464,7 @@ mod tests {
         tracing::debug!(?serialized);
         assert_eq!(
             serialized,
-            r#""eyJhbGciOiJFZERTQSIsInR5cCI6IkpXVCJ9.eyJ1Y3YiOiIwLjEwLjAtYWxwaGEuMSIsImlzcyI6ImRpZDp3azptNXdFQ3R4aTJreFJtZTJ1aHN3dTQ2Qnd6UnRxdmhFem5XS3VjRnJycGgwSTcrdW8iLCJhdWQiOiJkaWQ6d2s6YjV1YTVsNHdnY3A0NnpydG4zaWhqam11NWdieWh1c215dDViaWFubDVvdjJ5cnZqN3duaDR2dGkiLCJleHAiOjM2MDAsIm5iZiI6MCwibm5jIjoiMTEwMDI2M2E0MDEyIiwiZmN0Ijp7fSwiY2FwIjp7fX0.BS7o33ih64jHkYeWB02gT1PPlqMrbhx1hSzt-197X0sEFffnRT_riiSLLudqp_MhFOA1yO8BPDelrINMPURaCg""#
+            r#""eyJhbGciOiJFZERTQSIsInR5cCI6IkpXVCJ9.eyJ1Y3YiOiIwLjEwLjAtYWxwaGEuMSIsImlzcyI6ImRpZDp3azptNXdFQ3R4aTJreFJtZTJ1aHN3dTQ2Qnd6UnRxdmhFem5XS3VjRnJycGgwSTcrdW8iLCJhdWQiOiJkaWQ6d2s6YjV1YTVsNHdnY3A0NnpydG4zaWhqam11NWdieWh1c215dDViaWFubDVvdjJ5cnZqN3duaDR2dGkiLCJleHAiOjM2MDAwMDAwMDAsIm5iZiI6MCwibm5jIjoiMTEwMDI2M2E0MDEyIiwiZmN0Ijp7fSwiY2FwIjp7fX0.eSJgkvDQmAt-z9r6ceo4NpgkXZ0kddjYop4_PBRRpf1dAC9OkVpqDNgyniVxNe9hRu3ugZHMLYExM14Vkrm_Bw""#
         );
 
         let deserialized: SignedUcan<PlaceholderStore> = serde_json::from_str(&serialized)?;
@@ -467,7 +484,7 @@ mod tests {
         let signed_ucan = Ucan::builder()
             .issuer("did:wk:m5wECtxi2kxRme2uhswu46BwzRtqvhEznWKucFrrph0I7+uo")
             .audience("did:wk:b5ua5l4wgcp46zrtn3ihjjmu5gbyhusmyt5bianl5ov2yrvj7wnh4vti")
-            .expiration(UNIX_EPOCH + Duration::from_secs(3600))
+            .expiration(UNIX_EPOCH + Duration::from_secs(3_600_000_000)) // TODO: Change to chrono date
             .not_before(UNIX_EPOCH)
             .nonce("1100263a4012")
             .facts(vec![])
@@ -476,7 +493,7 @@ mod tests {
                     "entity/read": [{}],
                     "entity/write": [{}],
                 },
-            })
+            }?)
             .proofs(vec![])
             .sign(&keypair)?;
 
@@ -484,7 +501,7 @@ mod tests {
         tracing::debug!(?encoded);
         assert_eq!(
             encoded,
-            "eyJhbGciOiJFZERTQSIsInR5cCI6IkpXVCJ9.eyJ1Y3YiOiIwLjEwLjAtYWxwaGEuMSIsImlzcyI6ImRpZDp3azptNXdFQ3R4aTJreFJtZTJ1aHN3dTQ2Qnd6UnRxdmhFem5XS3VjRnJycGgwSTcrdW8iLCJhdWQiOiJkaWQ6d2s6YjV1YTVsNHdnY3A0NnpydG4zaWhqam11NWdieWh1c215dDViaWFubDVvdjJ5cnZqN3duaDR2dGkiLCJleHAiOjM2MDAsIm5iZiI6MCwibm5jIjoiMTEwMDI2M2E0MDEyIiwiZmN0Ijp7fSwiY2FwIjp7Inplcm9mczovL3B1YmxpYy9waG90b3MvZG9ncy8iOnsiZW50aXR5L3JlYWQiOlt7fV0sImVudGl0eS93cml0ZSI6W3t9XX19fQ.EPLDBEGlUi9pmFjahJEepLl1D7fKT8FbZ887SJshzauTWLZ8b9tkfke0_qYK0lOsexd62R3VC7RR9FIR_UYvCg"
+            "eyJhbGciOiJFZERTQSIsInR5cCI6IkpXVCJ9.eyJ1Y3YiOiIwLjEwLjAtYWxwaGEuMSIsImlzcyI6ImRpZDp3azptNXdFQ3R4aTJreFJtZTJ1aHN3dTQ2Qnd6UnRxdmhFem5XS3VjRnJycGgwSTcrdW8iLCJhdWQiOiJkaWQ6d2s6YjV1YTVsNHdnY3A0NnpydG4zaWhqam11NWdieWh1c215dDViaWFubDVvdjJ5cnZqN3duaDR2dGkiLCJleHAiOjM2MDAwMDAwMDAsIm5iZiI6MCwibm5jIjoiMTEwMDI2M2E0MDEyIiwiZmN0Ijp7fSwiY2FwIjp7Inplcm9mczovL3B1YmxpYy9waG90b3MvZG9ncy8iOnsiZW50aXR5L3JlYWQiOlt7fV0sImVudGl0eS93cml0ZSI6W3t9XX19fQ.0AdFn0L_oHqxWz-0ybqy43N0Rumhp0MObGqOE-tSkqLiyunCASwuHyVrMBWes2TsdvDe4YNbaWWlVXaOEDtBBA"
         );
 
         let decoded: SignedUcan<PlaceholderStore> = encoded.parse()?;
@@ -495,7 +512,7 @@ mod tests {
             .issuer("did:wk:m5wECtxi2kxRme2uhswu46BwzRtqvhEznWKucFrrph0I7+uo")
             .audience("did:wk:b5ua5l4wgcp46zrtn3ihjjmu5gbyhusmyt5bianl5ov2yrvj7wnh4vti")
             .expiration(None)
-            .capabilities(caps!())
+            .capabilities(caps!()?)
             .sign(&keypair)?;
 
         let encoded = signed_ucan.to_string();
@@ -526,7 +543,7 @@ mod tests {
                 "zerodb://": {
                     "db/read": [{}],
                 }
-            })
+            }?)
             .store(store.clone())
             .sign(&principal_0_key)?;
 
