@@ -1,14 +1,13 @@
 #![allow(clippy::mutable_key_type)]
 
 use std::{
-    collections::BTreeSet,
-    fmt::Display,
+    fmt::{Debug, Display},
     str::FromStr,
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
 use base64::prelude::{Engine, BASE64_URL_SAFE_NO_PAD};
-use libipld::{cid::Version, multihash::Code, Cid};
+use libipld::cid::Version;
 use serde::{Deserialize, Serialize, Serializer};
 use zeroutils_did_wk::WrappedDidWebKey;
 use zeroutils_store::{IpldStore, PlaceholderStore};
@@ -27,7 +26,6 @@ pub const VERSION: &str = "0.10.0-alpha.1";
 //--------------------------------------------------------------------------------------------------
 
 /// Represents the payload part of a UCAN token, which contains all the claims and data necessary for the authorization process.
-#[derive(Debug)]
 pub struct UcanPayload<'a, S>
 where
     S: IpldStore,
@@ -85,8 +83,8 @@ struct UcanPayloadSerde<'a> {
 
     cap: Capabilities<'a>,
 
-    #[serde(default, skip_serializing_if = "BTreeSet::is_empty")]
-    prf: BTreeSet<Cid>,
+    #[serde(default, skip_serializing_if = "Proofs::is_empty")]
+    prf: Proofs<PlaceholderStore>,
 }
 
 //--------------------------------------------------------------------------------------------------
@@ -225,7 +223,7 @@ where
             nnc: self.nonce.clone(),
             fct: self.facts.clone(),
             cap: self.capabilities.clone(),
-            prf: self.proofs.clone().into(),
+            prf: self.proofs.iter().map(|prf| *prf.cid()).collect(),
         };
 
         serde.serialize(serializer)
@@ -246,9 +244,10 @@ impl<'a, 'de> Deserialize<'de> for UcanPayload<'a, PlaceholderStore> {
             )));
         }
 
-        // Check if the UCAN's proofs are all valid CIDs. Essentially, this checks that the CIDs are
+        // Check if the UCAN's proofs are all canonical CIDs. Essentially, this checks that the CIDs are
         // of version `1`, hash function `SHA-256`, and codec `Raw`.
-        for cid in &payload.prf {
+        for prf in payload.prf.iter() {
+            let cid = prf.cid();
             let version = cid.version();
             if version != Version::V1 {
                 return Err(serde::de::Error::custom(UcanError::InvalidProofCidVersion(
@@ -256,12 +255,13 @@ impl<'a, 'de> Deserialize<'de> for UcanPayload<'a, PlaceholderStore> {
                 )));
             }
 
-            let hash_code = cid.hash().code();
-            if hash_code != u64::from(Code::Sha2_256) {
-                return Err(serde::de::Error::custom(UcanError::InvalidProofCidHash(
-                    hash_code,
-                )));
-            }
+            // TODO: Add back support when IpldStore supports specifying hash method.
+            // let hash_code = cid.hash().code();
+            // if hash_code != u64::from(Code::Sha2_256) {
+            //     return Err(serde::de::Error::custom(UcanError::InvalidProofCidHash(
+            //         hash_code,
+            //     )));
+            // }
 
             let codec = cid.codec();
             if codec != 0x55 {
@@ -297,7 +297,7 @@ impl<'a, 'de> Deserialize<'de> for UcanPayload<'a, PlaceholderStore> {
             nonce: payload.nnc,
             facts: payload.fct,
             capabilities: payload.cap,
-            proofs: payload.prf.into_iter().collect(),
+            proofs: payload.prf,
             store: PlaceholderStore,
         })
     }
@@ -360,6 +360,24 @@ where
             && self.facts == other.facts
             && self.capabilities == other.capabilities
             && self.proofs == other.proofs
+    }
+}
+
+impl<'a, S> Debug for UcanPayload<'a, S>
+where
+    S: IpldStore,
+{
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("UcanPayload")
+            .field("issuer", &self.issuer.to_string())
+            .field("audience", &self.audience.to_string())
+            .field("expiration", &self.expiration)
+            .field("not_before", &self.not_before)
+            .field("nonce", &self.nonce)
+            .field("facts", &self.facts)
+            .field("capabilities", &self.capabilities)
+            .field("proofs", &self.proofs)
+            .finish()
     }
 }
 

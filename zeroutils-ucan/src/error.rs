@@ -6,7 +6,7 @@ use libipld::{cid::Version, Cid};
 use thiserror::Error;
 
 use crate::{
-    Abilities, CapabilityTuple, Trace, UnresolvedCapWithRootIss, UnresolvedUcanWithAud,
+    Abilities, CapabilityTuple, Caveats, Trace, UnresolvedCapWithRootIss, UnresolvedUcanWithAud,
     UnresolvedUcanWithCid,
 };
 
@@ -129,17 +129,25 @@ pub enum UcanError {
     PermissionError(#[from] PermissionError),
 
     /// Unresolved capabilities
-    #[error("Unresolved capabilities: unresolved with cids: {unresolved_with_cids:?}, unresolved with auds: {unresolved_with_auds:?}, unresolved with root iss: {unresolved_with_root_iss:?}")]
+    #[error("Unresolved capabilities: `UcanWithCids`: {ucan_with_cids:?}, `UcanWithAuds`: {ucan_with_auds:?}, `CapWithRootIss`: {cap_with_root_iss:?}")]
     UnresolvedCapabilities {
         /// List of unresolved `UcanWithCid`s.
-        unresolved_with_cids: Vec<UnresolvedUcanWithCid>,
+        ucan_with_cids: Vec<UnresolvedUcanWithCid>,
 
         /// List of unresolved `UcanWithAud`s.
-        unresolved_with_auds: Vec<UnresolvedUcanWithAud>,
+        ucan_with_auds: Vec<UnresolvedUcanWithAud>,
 
         /// List of unresolved `CapWithRootIss`s.
-        unresolved_with_root_iss: Vec<UnresolvedCapWithRootIss>,
+        cap_with_root_iss: Vec<UnresolvedCapWithRootIss>,
     },
+
+    /// Invalid UCAN resource ability
+    #[error("Invalid UCAN resource ability: {0:?}")]
+    InvalidUcanResourceAbility(Abilities),
+
+    /// Invalid UCAN resource caveats
+    #[error("Invalid UCAN resource caveats: {0:?}")]
+    InvalidUcanResourceCaveats(Caveats),
 }
 
 /// Defines the attenuation errors that can occur in UCAN operations.

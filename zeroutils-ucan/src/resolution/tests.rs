@@ -17,9 +17,11 @@ async fn test_ucan_resolve_capabilities() -> anyhow::Result<()> {
 
     let p0 = Ed25519KeyPair::generate(&mut thread_rng())?;
     let p1 = Ed25519KeyPair::generate(&mut thread_rng())?;
+    let p2 = Ed25519KeyPair::generate(&mut thread_rng())?;
 
     let p0_did = WrappedDidWebKey::from_key(&p0, Base::Base58Btc)?;
     let p1_did = WrappedDidWebKey::from_key(&p1, Base::Base58Btc)?;
+    let p2_did = WrappedDidWebKey::from_key(&p2, Base::Base58Btc)?;
 
     let root_authority = RootAuthority {
         key: p0.clone(),
@@ -31,7 +33,7 @@ async fn test_ucan_resolve_capabilities() -> anyhow::Result<()> {
 
     let ucan0 = Ucan::builder()
         .issuer(p0_did.clone())
-        .audience(p1_did.clone())
+        .audience(p0_did.clone())
         .expiration(SystemTime::now() + Duration::from_secs(10))
         .capabilities(caps! {
             "zerodb://": { "db/table/read": [{}] }
@@ -41,28 +43,33 @@ async fn test_ucan_resolve_capabilities() -> anyhow::Result<()> {
     let cid0 = store.put_bytes(ucan0.to_string()).await?;
 
     let ucan1 = Ucan::builder()
-        .issuer(p0_did)
-        .audience(p1_did)
+        .issuer(p0_did.clone())
+        .audience(p1_did.clone())
         .expiration(SystemTime::now() + Duration::from_secs(10))
         .capabilities(caps! {
-            "zerodb://": { "db/table/read": [{}] }
+            // "zerodb://": { "db/table/read": [{}] }
         })
         .store(store.clone())
         .proofs([cid0])
         .sign(&p1)?;
 
-    let ucan1: Ucan<'_, MemoryStore, crate::UcanHeader, crate::UcanSignature> = ucan1.clone();
+    let cid1 = store.put_bytes(ucan1.to_string()).await?;
 
-    let resolved = ucan1
-        .resolve_capabilities((vec![], vec![], vec![]), &root_authority, vec![], &store)
-        .await?;
+    let ucan2 = Ucan::builder()
+        .issuer(p1_did)
+        .audience(p2_did)
+        .expiration(SystemTime::now() + Duration::from_secs(10))
+        .capabilities(caps! {
+            "ucan:./*": { "ucan/*": [{}] },
+            // "zerodb://": { "db/table/read": [{}] }
+        })
+        .store(store.clone())
+        .proofs([cid1])
+        .sign(&p2)?;
 
-    println!("{:?}", resolved);
+    let resolved = ucan2.resolve_capabilities(&root_authority, &store).await?;
+
+    println!("{:#?}", resolved);
 
     Ok(())
 }
-
-// #[proptest]
-// fn test_ucan_resolve_capabilities() {
-//     todo!()
-// }

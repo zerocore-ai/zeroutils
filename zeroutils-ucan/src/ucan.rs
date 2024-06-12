@@ -1,4 +1,7 @@
-use std::{fmt::Display, str::FromStr};
+use std::{
+    fmt::{Debug, Display},
+    str::FromStr,
+};
 
 use libipld::Cid;
 use serde::{Deserialize, Serialize};
@@ -23,7 +26,7 @@ use crate::{
 /// NOTE: This implementation currently only supports the `did:wk` DID method.
 ///
 /// [ucan]: https://github.com/ucan-wg/spec
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct Ucan<'a, S, H = (), V = ()>
 where
     S: IpldStore,
@@ -370,6 +373,19 @@ where
     }
 }
 
+impl<'a, S, H, V> Debug for Ucan<'a, S, H, V>
+where
+    S: IpldStore,
+    H: Debug,
+    V: Debug,
+{
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Ucan")
+            .field("header", &self.header)
+            .field("payload", &self.payload)
+            .finish()
+    }
+}
 //--------------------------------------------------------------------------------------------------
 // Tests
 //--------------------------------------------------------------------------------------------------

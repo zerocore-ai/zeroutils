@@ -1,7 +1,4 @@
-use std::{
-    collections::BTreeMap,
-    ops::{Deref, Index},
-};
+use std::ops::{Deref, Index};
 
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
@@ -45,9 +42,14 @@ impl Caveats {
         Caveats(vec![Map::new()])
     }
 
+    /// Returns true if caveats is an any caveats.
+    pub fn is_any(&self) -> bool {
+        self.0.len() == 1 && self.0[0].is_empty()
+    }
+
     /// Creates a new `Caveats` instance from an iterator.
     #[allow(clippy::should_implement_trait)]
-    pub fn from_iter(iter: impl IntoIterator<Item = BTreeMap<String, Value>>) -> UcanResult<Self> {
+    pub fn from_iter(iter: impl IntoIterator<Item = Map<String, Value>>) -> UcanResult<Self> {
         let caveats: Vec<_> = iter.into_iter().map(Map::from_iter).collect();
         if caveats.is_empty() {
             return Err(UcanError::EmptyCaveats);
@@ -181,10 +183,10 @@ impl Deref for Caveats {
     }
 }
 
-impl TryFrom<Vec<BTreeMap<String, Value>>> for Caveats {
+impl TryFrom<Vec<Map<String, Value>>> for Caveats {
     type Error = UcanError;
 
-    fn try_from(vec: Vec<BTreeMap<String, Value>>) -> Result<Self, Self::Error> {
+    fn try_from(vec: Vec<Map<String, Value>>) -> Result<Self, Self::Error> {
         Caveats::from_iter(vec)
     }
 }
@@ -203,7 +205,6 @@ impl Index<usize> for Caveats {
 
 #[cfg(test)]
 mod tests {
-    use std::collections::BTreeMap;
 
     use crate::caveats;
 
@@ -211,7 +212,7 @@ mod tests {
 
     #[test]
     fn test_caveats_constructors() -> anyhow::Result<()> {
-        let caveats = Caveats::from_iter(vec![BTreeMap::new()])?;
+        let caveats = Caveats::from_iter(vec![Map::new()])?;
 
         assert_eq!(caveats.len(), 1);
 
@@ -219,7 +220,7 @@ mod tests {
         assert!(Caveats::from_iter(vec![]).is_err());
 
         // Multiple caveats must have at least one non-empty caveat
-        assert!(Caveats::from_iter(vec![BTreeMap::new(), BTreeMap::new()]).is_err());
+        assert!(Caveats::from_iter(vec![Map::new(), Map::new()]).is_err());
 
         Ok(())
     }

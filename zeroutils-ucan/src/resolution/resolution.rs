@@ -1,5 +1,5 @@
 #![allow(unused)]
-use std::{collections::HashSet, iter};
+use std::{collections::HashSet, iter, vec};
 
 use async_recursion::async_recursion;
 use either::Either;
@@ -39,9 +39,6 @@ pub struct UnresolvedCapWithRootIss {
 pub struct UnresolvedUcanWithCid {
     /// The CID of the UCAN.
     pub cid: Option<Cid>,
-
-    /// The abilities of the UCAN.
-    pub abilities: Option<Abilities>,
 }
 
 /// Represents the capabilities of any UCAN with a specific audience DID.
@@ -55,9 +52,6 @@ pub struct UnresolvedUcanWithAud {
 
     /// The scheme of the UCAN.
     pub scheme: Option<Scheme>,
-
-    /// The abilities of the UCAN.
-    pub abilities: Option<Abilities>,
 }
 
 /// Represents a capability that has been validated, resolved and is in its final form.
@@ -79,10 +73,34 @@ where
     S: IpldStore + Sync,
 {
     /// Resolves the capabilities of a UCAN to their final form.
-    #[async_recursion(?Send)]
     pub async fn resolve_capabilities<'b, K>(
         &self,
-        (unresolved_with_cids, unresolved_with_auds, unresolved_with_root_iss): (
+        authority: &RootAuthority<'b, K>,
+        store: &S,
+    ) -> UcanResult<Vec<ResolvedCapability>>
+    where
+        K: GetPublicKey + Sync,
+    {
+        self.resolve_capabilities_with(
+            (
+                vec![
+                    // This is needed to ensure that the entry UCAN is mapped.
+                    UnresolvedUcanWithCid { cid: None },
+                ],
+                vec![],
+                vec![],
+            ),
+            authority,
+            vec![],
+            store,
+        )
+        .await
+    }
+
+    #[async_recursion(?Send)]
+    async fn resolve_capabilities_with<'b, K>(
+        &self,
+        (ucan_with_cids, ucan_with_auds, cap_with_root_iss): (
             Vec<UnresolvedUcanWithCid>,
             Vec<UnresolvedUcanWithAud>,
             Vec<UnresolvedCapWithRootIss>,
@@ -94,50 +112,69 @@ where
     where
         K: GetPublicKey + Sync,
     {
+        println!("\nEntry"); // TODO: Remove
+        println!("ucan_with_cids: {:?}", ucan_with_cids);
+        println!("ucan_with_auds: {:?}", ucan_with_auds);
+        println!("cap_with_root_iss: {:?}", cap_with_root_iss);
+
         // Validate the UCAN.
         self.validate()?;
 
         // Makes sure the `UcanWithCid` capabilities are attenuated.
-        for ucan_with_cid in unresolved_with_cids.iter() {
-            self.validate_attenuation_with_cid(ucan_with_cid, &authority.key, &trace)?;
-        }
+        // TODO: Also make sure ucan schemes only accept ucan/* with any caveats only.
 
         // Partition the `UcanWithAud` capabilities into validated and unvalidated.
-        let (unresolved_with_auds_validated, unresolved_with_auds_unvalidated) =
-            unresolved_with_auds
-                .into_iter()
-                .partition::<Vec<_>, _>(|ucan_with_aud| {
-                    self.validate_attenuation_with_aud(ucan_with_aud, &authority.key, &trace)
-                        .is_ok()
-                });
+        let (ucan_with_auds_validated, ucan_with_auds_unvalidated) = ucan_with_auds
+            .into_iter()
+            .partition::<Vec<_>, _>(|ucan_with_aud| {
+                self.validate_attenuation_with_aud(ucan_with_aud, &authority.key, &trace)
+                    .is_ok()
+            });
 
-        // Map capabilities depending on if there are any validated `UcanWithAud` capabilities or `CapWithRootIss` capabilities.
+        let should_map = !ucan_with_auds_validated.is_empty() || !ucan_with_cids.is_empty();
         let (
             mut new_ucan_with_cids,
             mut new_ucan_with_auds,
-            mut new_caps_with_root_iss,
+            mut new_cap_with_root_iss,
             mut resolved,
-        ) = if unresolved_with_cids.len() + unresolved_with_auds_validated.len() > 0 {
-            let (ucan_with_cids, mut ucan_with_auds, mut caps_with_root_iss, resolved) =
-                self.map_capabilities();
+            no_new_mapped_ucans,
+        ) = if should_map {
+            let (
+                current_ucan_with_cids,
+                mut current_ucan_with_auds,
+                mut current_cap_with_root_iss,
+                mut resolved,
+            ) = self.map_all_capabilities();
 
-            // Combine new with old.
-            ucan_with_auds.extend(unresolved_with_auds_unvalidated);
-            caps_with_root_iss.extend(unresolved_with_root_iss);
+            // Add new `CapWithRootIss` capabilities to the current ones.
+            current_cap_with_root_iss.extend(cap_with_root_iss);
 
-            (ucan_with_cids, ucan_with_auds, caps_with_root_iss, resolved)
+            // If there are no new `UcanWithCid` or `UcanWithAud` from the current UCAN.
+            let no_new_mapped_ucans =
+                current_ucan_with_cids.is_empty() && current_ucan_with_auds.is_empty();
+
+            // Add new `UcanWithAud` capabilities to the current ones.
+            current_ucan_with_auds.extend(ucan_with_auds_unvalidated);
+
+            (
+                current_ucan_with_cids,
+                current_ucan_with_auds,
+                current_cap_with_root_iss,
+                resolved,
+                no_new_mapped_ucans,
+            )
         } else {
-            // Return old capabilities.
             (
                 vec![],
-                unresolved_with_auds_unvalidated,
-                unresolved_with_root_iss,
+                ucan_with_auds_unvalidated,
+                cap_with_root_iss,
                 vec![],
+                true,
             )
         };
 
         // Filter out new `CapWithRootIss` that can be resolved to their final forms
-        let new_caps_with_root_iss = new_caps_with_root_iss
+        let new_cap_with_root_iss = new_cap_with_root_iss
             .into_iter()
             .filter_map(|unresolved| {
                 if self
@@ -152,10 +189,19 @@ where
             })
             .collect::<Vec<_>>();
 
+        // If there are no new mapped ucan capabilities while `CapWithRootIss` still remains to be resolved, return error.
+        if no_new_mapped_ucans && !new_cap_with_root_iss.is_empty() {
+            return Err(UcanError::UnresolvedCapabilities {
+                ucan_with_cids: new_ucan_with_cids,
+                ucan_with_auds: new_ucan_with_auds,
+                cap_with_root_iss: new_cap_with_root_iss,
+            });
+        }
+
         // If there are no new capabilities, return the resolved capabilities.
         if new_ucan_with_cids.is_empty()
             && new_ucan_with_auds.is_empty()
-            && new_caps_with_root_iss.is_empty()
+            && new_cap_with_root_iss.is_empty()
         {
             return Ok(resolved);
         }
@@ -163,14 +209,14 @@ where
         // If there are no proofs, return an error.
         if self.payload.proofs.is_empty() {
             return Err(UcanError::UnresolvedCapabilities {
-                unresolved_with_cids: new_ucan_with_cids,
-                unresolved_with_auds: new_ucan_with_auds,
-                unresolved_with_root_iss: new_caps_with_root_iss,
+                ucan_with_cids: new_ucan_with_cids,
+                ucan_with_auds: new_ucan_with_auds,
+                cap_with_root_iss: new_cap_with_root_iss,
             });
         }
 
         // Ensure that Cids in `UcanWithCid`s can actually be found in the proofs.
-        let mut unresolved_cids = HashSet::new();
+        let mut ucan_with_actual_cids = HashSet::new();
         for ucan_with_cid in new_ucan_with_cids.iter() {
             if let Some(cid) = ucan_with_cid.cid {
                 self.payload
@@ -178,33 +224,37 @@ where
                     .get(&cid)
                     .ok_or(UcanError::ProofCidNotFound(cid))?;
 
-                unresolved_cids.insert(cid);
+                ucan_with_actual_cids.insert(cid);
             }
         }
 
-        // Determine if we need to filter proofs based on existence of mapped capabilities that apply to all proofs in the UCAN.
-        let should_filter_proofs =
-            new_ucan_with_auds.is_empty() && new_ucan_with_cids.len() == unresolved_cids.len();
+        // Determine if we should filter or go through all the proofs. This depends on existence of ucan schemes like, ucan:./* or ucan:<cid>.
+        let should_filter_proofs = new_ucan_with_auds.is_empty()
+            && new_ucan_with_cids.len() == ucan_with_actual_cids.len();
 
         for proof in self.payload.proofs.iter() {
+            println!("Got here"); // TODO: Remove
+
             // TODO: IMPORTANT: We should check that our expiry does not exceed delegator's and that our nbf is not before delegator's.
-            // If we need to filter and the proof's CID is not in unresolved_cids, skip this proof.
-            if should_filter_proofs && !unresolved_cids.contains(proof.cid()) {
+            // If we need to filter and the proof's CID is not in ucan_with_actual_cids, skip this proof.
+            if should_filter_proofs && !ucan_with_actual_cids.contains(proof.cid()) {
+                println!("Skipping proof"); // TODO: Remove
                 continue;
             }
 
             let ucan = proof.fetch_ucan(store).await?;
+            println!("Fetched UCAN: {:?}", ucan); // TODO: Remove
 
             let trace = iter::once(*proof.cid())
                 .chain(trace.iter().cloned())
                 .collect();
 
             let result = ucan
-                .resolve_capabilities(
+                .resolve_capabilities_with(
                     (
                         new_ucan_with_cids.clone(),
                         new_ucan_with_auds.clone(),
-                        new_caps_with_root_iss.clone(),
+                        new_cap_with_root_iss.clone(),
                     ),
                     authority,
                     trace,
@@ -216,35 +266,6 @@ where
         }
 
         Ok(resolved)
-    }
-
-    fn validate_attenuation_with_cid<K>(
-        &self,
-        unresolved: &UnresolvedUcanWithCid,
-        root_key: &K,
-        trace: &Trace,
-    ) -> UcanResult<()>
-    where
-        K: GetPublicKey,
-    {
-        // Checks if the abilities are present and permitted in the UCAN.
-        if let Some(abilities) = &unresolved.abilities {
-            if !abilities.iter().all(|(ability, caveat)| {
-                self.payload.capabilities.iter().any(|(_, abilities)| {
-                    abilities
-                        .iter()
-                        .any(|(a, c)| a.permits(ability) && c.permits(caveat))
-                })
-            }) {
-                return Err(AttenuationError::AbilitiesNotPermittedInScope(
-                    abilities.clone(),
-                    trace.clone(),
-                )
-                .into());
-            }
-        }
-
-        Ok(())
     }
 
     fn validate_attenuation_with_aud<K>(
@@ -282,23 +303,6 @@ where
             {
                 return Err(AttenuationError::SchemeNotPermittedInScope(
                     scheme.clone(),
-                    trace.clone(),
-                )
-                .into());
-            }
-        }
-
-        // Checks if the abilities are present and permitted in the UCAN.
-        if let Some(abilities) = &unresolved.abilities {
-            if !abilities.iter().all(|(ability, caveat)| {
-                self.payload.capabilities.iter().any(|(_, abilities)| {
-                    abilities
-                        .iter()
-                        .any(|(a, c)| a.permits(ability) && c.permits(caveat))
-                })
-            }) {
-                return Err(AttenuationError::AbilitiesNotPermittedInScope(
-                    abilities.clone(),
                     trace.clone(),
                 )
                 .into());
@@ -355,7 +359,7 @@ where
     /// - 1. `UnresolvedCapability::UcanWithCid`
     /// - 2. `UnresolvedCapability::UcanWithAud`
     /// - 3. `ResolvedCapability::*`
-    fn map_capabilities(
+    fn map_all_capabilities(
         &self,
     ) -> (
         Vec<UnresolvedUcanWithCid>,
@@ -375,7 +379,6 @@ where
                         let unresolved = UnresolvedUcanWithAud {
                             did: did.clone().into_owned(),
                             scheme: None,
-                            abilities: Some(abilities.clone()),
                         };
 
                         unresolved_ucan_with_auds.push(unresolved);
@@ -384,7 +387,6 @@ where
                         let unresolved = UnresolvedUcanWithAud {
                             did: self.payload.issuer.clone().into_owned(),
                             scheme: None,
-                            abilities: Some(abilities.clone()),
                         };
 
                         let resolved = ResolvedCapability::UcanAllTransient(Box::new(
@@ -398,24 +400,17 @@ where
                         let unresolved = UnresolvedUcanWithAud {
                             did: did.clone().into_owned(),
                             scheme: Some(scheme.clone()),
-                            abilities: Some(abilities.clone()),
                         };
 
                         unresolved_ucan_with_auds.push(unresolved);
                     }
                     ProofReference::AllProofsInCurrentUcan => {
-                        let unresolved = UnresolvedUcanWithCid {
-                            cid: None,
-                            abilities: Some(abilities.clone()),
-                        };
+                        let unresolved = UnresolvedUcanWithCid { cid: None };
 
                         unresolved_ucan_with_cids.push(unresolved);
                     }
                     ProofReference::SpecificProofByCid(cid) => {
-                        let unresolved = UnresolvedUcanWithCid {
-                            cid: Some(*cid),
-                            abilities: Some(abilities.clone()),
-                        };
+                        let unresolved = UnresolvedUcanWithCid { cid: Some(*cid) };
 
                         unresolved_ucan_with_cids.push(unresolved);
                     }

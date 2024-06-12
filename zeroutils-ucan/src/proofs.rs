@@ -1,4 +1,7 @@
-use std::collections::{BTreeMap, BTreeSet};
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    fmt::Debug,
+};
 
 use async_once_cell::OnceCell;
 use libipld::Cid;
@@ -16,7 +19,6 @@ use crate::{SignedUcan, UcanError, UcanResult};
 /// This type stores proofs in a sorted set, ensuring that each proof is unique and allowing
 /// efficient querying and verification. These proofs are used to link UCANs hierarchically,
 /// establishing chains of delegation.
-#[derive(Debug)]
 pub struct Proofs<S = PlaceholderStore>(pub(crate) BTreeMap<Cid, CachedUcan<S>>)
 where
     S: IpldStore;
@@ -116,6 +118,7 @@ where
             .get_or_try_init(async {
                 let bytes = store.get_bytes(self.cid).await?;
                 let ucan_str = std::str::from_utf8(&bytes)?;
+                println!("Fetched UCAN: {:?}", ucan_str); // TODO: Remove
                 SignedUcan::with_store(ucan_str, store.clone())
             })
             .await
@@ -201,6 +204,7 @@ where
     S: IpldStore,
 {
     fn clone(&self) -> Self {
+        // TODO: We should be able to clone the cached UCANs too.
         Self(self.0.keys().map(|cid| (*cid, OnceCell::new())).collect())
     }
 }
@@ -213,7 +217,11 @@ where
     where
         Ser: serde::Serializer,
     {
-        self.0.keys().collect::<BTreeSet<_>>().serialize(serializer)
+        self.0
+            .keys()
+            .map(|cid| cid.to_string())
+            .collect::<BTreeSet<_>>()
+            .serialize(serializer)
     }
 }
 
@@ -225,8 +233,15 @@ where
     where
         D: serde::Deserializer<'de>,
     {
-        let cids = BTreeSet::<Cid>::deserialize(deserializer)?;
-        Ok(cids.into_iter().map(|cid| (cid, OnceCell::new())).collect())
+        let cids = BTreeSet::<String>::deserialize(deserializer)?;
+
+        let proofs = cids
+            .into_iter()
+            .map(|cid| Ok((cid.parse()?, OnceCell::new())))
+            .collect::<Result<Proofs<_>, libipld::cid::Error>>()
+            .map_err(serde::de::Error::custom)?;
+
+        Ok(proofs)
     }
 }
 
@@ -240,6 +255,15 @@ where
 }
 
 impl<S> Eq for Proofs<S> where S: IpldStore {}
+
+impl<S> Debug for Proofs<S>
+where
+    S: IpldStore,
+{
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{:?}", self.0)
+    }
+}
 
 //--------------------------------------------------------------------------------------------------
 // Tests
@@ -289,6 +313,21 @@ mod tests {
         let proofs_1 = Proofs::from_iter(vec![(cid, OnceCell::from(signed_ucan))]);
 
         assert_eq!(proofs_0, proofs_1);
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_proofs_serde() -> anyhow::Result<()> {
+        let proofs = Proofs::from_iter(vec![
+            Cid::from_str("bafkreih43byuv2f6ils5kpsj2qwzbwgdd2pqzs6anwm3nhfrhlagqjektm")?,
+            Cid::from_str("bafkreifiul3oxyugnf6fe7vtljmlku4vglu3hlr3mtkowcsg7nsxwqkwfq")?,
+        ]);
+
+        let ser = serde_json::to_string(&proofs)?;
+        let de: Proofs<PlaceholderStore> = serde_json::from_str(&ser)?;
+
+        assert_eq!(proofs, de);
 
         Ok(())
     }

@@ -2,7 +2,7 @@
 
 use std::{
     collections::BTreeMap,
-    ops::{Deref, DerefMut, Index},
+    ops::{Deref, Index},
     str::FromStr,
 };
 
@@ -70,6 +70,41 @@ impl<'a> Capabilities<'a> {
     pub fn get(&'a self, resource: &'a ResourceUri) -> Option<&Abilities> {
         self.0.get(resource)
     }
+
+    /// Checks if the capabilities are empty.
+    pub fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
+
+    /// Returns the number of resources in the capabilities.
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    /// Inserts a resource and its abilities into the capabilities.
+    pub fn insert(
+        &mut self,
+        resource: ResourceUri<'a>,
+        abilities: Abilities,
+    ) -> UcanResult<Option<Abilities>> {
+        if let ResourceUri::Reference(_) = resource {
+            if !abilities.is_ucan() {
+                return Err(UcanError::InvalidUcanResourceAbility(abilities));
+            }
+
+            let caveats = abilities.get(&Ability::Ucan).unwrap();
+            if !caveats.is_any() {
+                return Err(UcanError::InvalidUcanResourceCaveats(caveats.clone()));
+            }
+        }
+
+        Ok(self.0.insert(resource, abilities))
+    }
+
+    /// Returns an iterator over the capabilities.
+    pub fn iter(&self) -> impl Iterator<Item = (&ResourceUri, &Abilities)> {
+        self.0.iter()
+    }
 }
 
 impl Abilities {
@@ -84,6 +119,11 @@ impl Abilities {
         Ok(Abilities(abilities))
     }
 
+    /// Checks if abilities is a single `ucan/*` ability.
+    pub fn is_ucan(&self) -> bool {
+        self.0.len() == 1 && self.0.keys().next().map_or(false, |a| a.is_ucan())
+    }
+
     /// Gets the caveats for a given ability.
     pub fn get(&self, ability: &Ability) -> Option<&Caveats> {
         self.0.get(ability)
@@ -93,20 +133,6 @@ impl Abilities {
 //--------------------------------------------------------------------------------------------------
 // Trait Implementations: Derefs
 //--------------------------------------------------------------------------------------------------
-
-impl<'a> Deref for Capabilities<'a> {
-    type Target = BTreeMap<ResourceUri<'a>, Abilities>;
-
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
-
-impl<'a> DerefMut for Capabilities<'a> {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.0
-    }
-}
 
 impl Deref for Abilities {
     type Target = BTreeMap<Ability, Caveats>;
@@ -120,9 +146,16 @@ impl Deref for Abilities {
 // Trait Implementations: Froms
 //--------------------------------------------------------------------------------------------------
 
-impl<'a> From<BTreeMap<ResourceUri<'a>, Abilities>> for Capabilities<'a> {
-    fn from(map: BTreeMap<ResourceUri<'a>, Abilities>) -> Self {
-        Capabilities(map)
+impl<'a> TryFrom<BTreeMap<ResourceUri<'a>, Abilities>> for Capabilities<'a> {
+    type Error = UcanError;
+
+    fn try_from(map: BTreeMap<ResourceUri<'a>, Abilities>) -> Result<Self, Self::Error> {
+        let mut capabilities = Capabilities::new();
+        for (resource, abilities) in map {
+            capabilities.insert(resource, abilities)?;
+        }
+
+        Ok(capabilities)
     }
 }
 
@@ -131,12 +164,6 @@ impl TryFrom<BTreeMap<Ability, Caveats>> for Abilities {
 
     fn try_from(map: BTreeMap<Ability, Caveats>) -> Result<Self, Self::Error> {
         Abilities::from_iter(map)
-    }
-}
-
-impl<'a> FromIterator<(ResourceUri<'a>, Abilities)> for Capabilities<'a> {
-    fn from_iter<T: IntoIterator<Item = (ResourceUri<'a>, Abilities)>>(iter: T) -> Self {
-        Capabilities(iter.into_iter().collect())
     }
 }
 
@@ -176,9 +203,59 @@ where
 
 #[cfg(test)]
 mod tests {
+    use serde_json::Map;
+
     use crate::{caps, caveats};
 
     use super::*;
+
+    #[test]
+    fn test_capabilities_constructors() -> anyhow::Result<()> {
+        let mut capabilities = Capabilities::new();
+
+        assert!(capabilities
+            .insert(
+                "example://example.com/public/photos/".parse()?,
+                Abilities::from_iter([
+                    (
+                        "crud/read".parse()?,
+                        Caveats::from_iter([Map::from_iter([("public".into(), true.into())])])?,
+                    ),
+                    ("crud/delete".parse()?, Caveats::any()),
+                ])?,
+            )
+            .is_ok());
+
+        // Fails for wrong ucan resource capability combination
+        assert!(capabilities
+            .insert(
+                "ucan:*".parse()?,
+                Abilities::from_iter([("crud/delete".parse()?, Caveats::any())])?,
+            )
+            .is_err());
+
+        assert!(capabilities
+            .insert(
+                "ucan:./*".parse()?,
+                Abilities::from_iter([(
+                    "ucan/*".parse()?,
+                    Caveats::from_iter([Map::from_iter([("public".into(), true.into())])])?
+                )])?,
+            )
+            .is_err());
+
+        assert!(capabilities
+            .insert(
+                "ucan://did:wk:z6MkqAywjQVwsr7m1HMamynCZZjH8AKPqYZNXwpHg842pPsG/fs".parse()?,
+                Abilities::from_iter([(
+                    "crud/*".parse()?,
+                    Caveats::from_iter([Map::from_iter([("public".into(), true.into())])])?
+                )])?,
+            )
+            .is_err());
+
+        Ok(())
+    }
 
     #[test]
     fn test_abilities_constructors() -> anyhow::Result<()> {

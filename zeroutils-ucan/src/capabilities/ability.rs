@@ -125,6 +125,11 @@ impl Ability {
             _ => false,
         }
     }
+
+    /// Checks if the ability is a `ucan/*` ability.
+    pub fn is_ucan(&self) -> bool {
+        matches!(self, Self::Ucan)
+    }
 }
 
 impl Path {

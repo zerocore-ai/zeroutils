@@ -22,7 +22,7 @@ macro_rules! caps {
                     ability_list.insert($ability.parse().unwrap(), caveats);
                 )+
                 let abilities = $crate::Abilities::from_iter(ability_list).unwrap();
-                capabilities.insert(<$crate::ResourceUri as std::str::FromStr>::from_str($uri).unwrap(), abilities);
+                capabilities.insert(<$crate::ResourceUri as std::str::FromStr>::from_str($uri).unwrap(), abilities).unwrap();
             )*
             capabilities
         }
@@ -54,14 +54,14 @@ macro_rules! caveats {
             let mut caveat_list = std::vec::Vec::new();
             $(
                 #[allow(unused_mut)]
-                let mut caveat = std::collections::BTreeMap::new();
+                let mut caveat = ::serde_json::Map::new();
                 $(
                     caveat.insert($caveat.to_string(), $crate::serde_json::json!($json));
                 )*
                 caveat_list.push(caveat);
             )*
             if caveat_list.is_empty() {
-                caveat_list.push(std::collections::BTreeMap::new());
+                caveat_list.push(::serde_json::Map::new());
             }
 
             $crate::Caveats::from_iter(caveat_list).unwrap()
@@ -75,7 +75,7 @@ macro_rules! caveats {
 
 #[cfg(test)]
 mod tests {
-    use std::collections::BTreeMap;
+    use serde_json::Map;
 
     use crate::{Abilities, Capabilities, Caveats};
 
@@ -115,14 +115,14 @@ mod tests {
                     ("crud/read".parse()?, Caveats::any()),
                     ("crud/delete".parse()?, Caveats::any()),
                 ])?
-            });
+            })?;
 
             capabilities.insert("mailto:username@example.com".parse()?, {
                 Abilities::from_iter([
                     ("msg/send".parse()?, Caveats::any()),
                     (
                         "msg/receive".parse()?,
-                        Caveats::from_iter([BTreeMap::from_iter(vec![
+                        Caveats::from_iter([Map::from_iter(vec![
                             ("max_count".into(), serde_json::json!(5)),
                             (
                                 "templates".into(),
@@ -131,18 +131,18 @@ mod tests {
                         ])])?,
                     ),
                 ])?
-            });
+            })?;
 
             capabilities.insert("dns:example.com".parse()?, {
                 Abilities::from_iter([(
                     "crud/create".parse()?,
                     Caveats::from_iter([
-                        BTreeMap::from_iter(vec![("type".into(), serde_json::json!("A"))]),
-                        BTreeMap::from_iter(vec![("type".into(), serde_json::json!("CNAME"))]),
-                        BTreeMap::from_iter(vec![("type".into(), serde_json::json!("TXT"))]),
+                        Map::from_iter(vec![("type".into(), serde_json::json!("A"))]),
+                        Map::from_iter(vec![("type".into(), serde_json::json!("CNAME"))]),
+                        Map::from_iter(vec![("type".into(), serde_json::json!("TXT"))]),
                     ])?,
                 )])?
-            });
+            })?;
 
             capabilities
         };
@@ -159,7 +159,7 @@ mod tests {
             "templates": ["newsletter", "marketing"]
         }];
 
-        let expected_caveats = Caveats::from_iter([BTreeMap::from_iter(vec![
+        let expected_caveats = Caveats::from_iter([Map::from_iter(vec![
             ("max_count".into(), serde_json::json!(5)),
             (
                 "templates".into(),

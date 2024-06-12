@@ -34,6 +34,7 @@ use super::StoreResult;
 /// [ipld]: https://ipld.io/
 ///
 // TODO: Add support for deleting blocks with `derefence` method.
+// TODO: Add support for specifying hash type.
 pub trait IpldStore: Clone {
     /// Saves an IPLD serializable object to the store and returns the `Cid` to it.
     ///
