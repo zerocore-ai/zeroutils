@@ -1,8 +1,10 @@
 //! Error types of the zeroraft crate.
 
-use std::{collections::HashSet, time::SystemTime};
+use std::{collections::HashSet, convert::Infallible, time::SystemTime};
 
+use jtd::FromSerdeSchemaError;
 use libipld::{cid::Version, Cid};
+use serde_json::Value;
 use thiserror::Error;
 
 use crate::{
@@ -20,6 +22,10 @@ pub type UcanResult<T> = Result<T, UcanError>;
 /// Defines the types of errors that can occur in UCAN operations.
 #[derive(Debug, Error)]
 pub enum UcanError {
+    /// Infallible is an impossible error.
+    #[error("Infallible")]
+    Infallible(#[from] Infallible),
+
     /// Unable to parse the input.
     #[error("Unable to parse")]
     UnableToParse,
@@ -35,6 +41,26 @@ pub enum UcanError {
     /// Base64 decoding errors
     #[error("Base64 decoding error: {0}")]
     Base64Error(#[from] base64::DecodeError),
+
+    /// Caveats JTD error
+    #[error("Caveats JTD error: {0}")]
+    SerdeSchemaError(#[from] FromSerdeSchemaError),
+
+    /// JTD schema validation error
+    #[error("JTD validation error: {0}")]
+    JtdSchemaValidatError(#[from] jtd::SchemaValidateError),
+
+    /// JTD json validation error
+    #[error("JTD validate error: {0}")]
+    JtdValidateError(#[from] jtd::ValidateError),
+
+    /// Caveats definition validation error
+    #[error("Caveats definition validation error")]
+    CaveatsDefinitionValidationError,
+
+    /// Caveat type definition type error.
+    #[error("Caveat type definition must be of `properties` schema type, instead got: {0}")]
+    UnsupportedCaveatTypeDefinitionSchemaType(Value),
 
     /// Invalid ability
     #[error("Invalid ability: {0}")]
@@ -52,9 +78,17 @@ pub enum UcanError {
     #[error("Invalid mixtures of caveats")]
     InvalidCaveatsMix,
 
+    /// Invalid caveat
+    #[error("Invalid caveat: {0}")]
+    InvalidCaveat(Value),
+
     /// Uri parse error
     #[error("Uri parse error: {0}")]
     UriParseError(#[from] fluent_uri::ParseError),
+
+    /// Invalid non-UCAN uri
+    #[error("Invalid non-UCAN uri: {0}")]
+    InvalidNonUcanUri(String),
 
     /// Did Web Key error
     #[error("Did Web Key error: {0}")]
@@ -192,9 +226,9 @@ pub enum PermissionError {
 /// Unresolved capabilities
 #[derive(Debug, Clone)]
 pub struct Unresolved(
-    HashSet<UnresolvedUcanWithCid>,
-    HashSet<UnresolvedUcanWithAud>,
-    HashSet<UnresolvedCapWithRootIss>,
+    pub HashSet<UnresolvedUcanWithCid>,
+    pub HashSet<UnresolvedUcanWithAud>,
+    pub HashSet<UnresolvedCapWithRootIss>,
 );
 
 //--------------------------------------------------------------------------------------------------

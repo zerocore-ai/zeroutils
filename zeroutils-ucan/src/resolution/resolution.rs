@@ -73,9 +73,9 @@ where
     S: IpldStore + Sync,
 {
     /// Resolves the capabilities of a UCAN to their final form.
-    pub async fn resolve_capabilities<'b, K>(
+    pub async fn resolve_capabilities<K>(
         &self,
-        authority: &RootAuthority<'b, K>,
+        authority: &RootAuthority<K>,
         store: &S,
     ) -> UcanResult<HashSet<ResolvedCapability>>
     where
@@ -100,22 +100,20 @@ where
     }
 
     #[async_recursion(?Send)]
-    async fn resolve_capabilities_with<'b, K>(
+    async fn resolve_capabilities_with<K>(
         &self,
         (ucan_with_cids, ucan_with_auds, cap_with_root_iss): (
             HashSet<UnresolvedUcanWithCid>,
             HashSet<UnresolvedUcanWithAud>,
             HashSet<UnresolvedCapWithRootIss>,
         ),
-        authority: &RootAuthority<'b, K>,
+        authority: &RootAuthority<K>,
         trace: Trace,
         store: &S,
     ) -> UcanResult<HashSet<ResolvedCapability>>
     where
         K: GetPublicKey + Sync,
     {
-        println!("\n----\nEntry: {:?}", &trace[..]); // TODO: Remove
-
         // Validate the UCAN.
         self.validate()?;
 
@@ -175,7 +173,7 @@ where
             .into_iter()
             .filter_map(|unresolved| {
                 if self
-                    .validate_cap_with_root_iss_constraint(&unresolved, &authority.key, &trace)
+                    .validate_cap_with_root_iss_constraint(&unresolved, &authority, &trace)
                     .is_ok()
                 {
                     resolved.insert(ResolvedCapability::Final(unresolved.tuple.clone()));
@@ -306,14 +304,16 @@ where
     fn validate_cap_with_root_iss_constraint<K>(
         &self,
         unresolved: &UnresolvedCapWithRootIss,
-        root_key: &K,
+        authority: &RootAuthority<K>,
         trace: &Trace,
     ) -> UcanResult<()>
     where
         K: GetPublicKey,
     {
         let CapabilityTuple(uri, ability, caveats) = &unresolved.tuple;
+
         // TODO: We should check that capability tuple exists in the root capabilities definition
+        // authority.capabilities.contains(&unresolved.tuple)
 
         // Checks if the capability is present and permitted in the UCAN.
         if self
@@ -323,17 +323,18 @@ where
             .is_none()
         {
             return Err(AttenuationError::CapabilityNotPermittedInScope(
-                CapabilityTuple(uri.clone(), ability.clone(), caveats.clone()),
+                unresolved.tuple.clone(),
                 trace.clone(),
             )
             .into());
         }
 
         // Checks if the capability is delegated by the root issuer.
-        if self.payload.issuer != WrappedDidWebKey::from_key(root_key, self.payload.issuer.base())?
+        if self.payload.issuer
+            != WrappedDidWebKey::from_key(&authority.key, self.payload.issuer.base())?
         {
             return Err(AttenuationError::CapabilityNotDelegatedByRootIssuer(
-                CapabilityTuple(uri.clone(), ability.clone(), caveats.clone()),
+                unresolved.tuple.clone(),
                 trace.clone(),
             )
             .into());

@@ -82,12 +82,12 @@ pub enum PathSegment {
 
 impl Ability {
     /// Creates an ability from an iterator of path segments.
-    pub fn from_path_iter<T>(iter: impl IntoIterator<Item = T>) -> UcanResult<Self>
+    pub fn try_from_iter<T>(iter: impl IntoIterator<Item = T>) -> UcanResult<Self>
     where
         T: TryInto<PathSegment>,
         T::Error: Into<UcanError>,
     {
-        Path::from_iter(iter).map(Self::Path)
+        Path::try_from_iter(iter).map(Self::Path)
     }
 
     /// Checks if the `requested` ability is permitted by main ability.
@@ -138,8 +138,7 @@ impl Ability {
 
 impl Path {
     /// Creates a path from an iterator of path segments.
-    #[allow(clippy::should_implement_trait)]
-    pub fn from_iter<T>(iter: impl IntoIterator<Item = T>) -> UcanResult<Self>
+    pub fn try_from_iter<T>(iter: impl IntoIterator<Item = T>) -> UcanResult<Self>
     where
         T: TryInto<PathSegment>,
         T::Error: Into<UcanError>,
@@ -147,7 +146,7 @@ impl Path {
         let segments = iter
             .into_iter()
             .map(T::try_into)
-            .collect::<Result<Vec<_>, <T as TryInto<PathSegment>>::Error>>()
+            .collect::<Result<Vec<_>, _>>()
             .map_err(Into::into)?;
 
         if segments.is_empty() {
@@ -371,22 +370,22 @@ mod tests {
     fn test_ability_constructor() -> anyhow::Result<()> {
         // One path segement.
         let ability = Ability::from_str("http")?;
-        assert_eq!(ability, Ability::from_path_iter(vec!["http"])?);
+        assert_eq!(ability, Ability::try_from_iter(vec!["http"])?);
 
         // Two path segements.
         let ability = Ability::from_str("http/get")?;
-        assert_eq!(ability, Ability::from_path_iter(vec!["http", "get"])?,);
+        assert_eq!(ability, Ability::try_from_iter(vec!["http", "get"])?,);
 
         // Three path segements.
         let ability = Ability::from_str("db/table/read")?;
         assert_eq!(
             ability,
-            Ability::from_path_iter(vec!["db", "table", "read"])?
+            Ability::try_from_iter(vec!["db", "table", "read"])?
         );
 
         // Path with wildcard.
         let ability = Ability::from_str("db/table/*")?;
-        assert_eq!(ability, Ability::from_path_iter(vec!["db", "table", "*"])?);
+        assert_eq!(ability, Ability::try_from_iter(vec!["db", "table", "*"])?);
 
         // Ucan ability
         let ability = Ability::from_str("ucan/*")?;

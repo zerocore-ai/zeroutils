@@ -431,7 +431,7 @@ mod tests {
             .facts(vec![])
             .capabilities(caps!()?)
             .proofs(vec![])
-            .build()?;
+            .build();
 
         let serialized = serde_json::to_string(&ucan)?;
         tracing::debug!(?serialized);

@@ -96,43 +96,53 @@ impl ResourceUri<'_> {
     /// and `zerofs://public/photos` but not `zerofs://private`.
     pub fn permits(&self, requested: &ResourceUri<'_>) -> bool {
         match (self, requested) {
-            (ResourceUri::Reference(pr1), ResourceUri::Reference(pr2)) => {
-                if pr1 == pr2 {
-                    return true;
-                }
+            (ResourceUri::Reference(pr1), ResourceUri::Reference(pr2)) => pr1.permits(pr2),
+            (ResourceUri::Other(uri1), ResourceUri::Other(uri2)) => uri1.permits(uri2),
+            _ => false,
+        }
+    }
+}
 
-                // Allow ucan:<cid> as a subset of ucan:./*
-                if let (
-                    ProofReference::AllProofsInCurrentUcan,
-                    ProofReference::SpecificProofByCid(_),
-                ) = (pr1, pr2)
-                {
-                    return true;
-                }
+impl<'a> ProofReference<'a> {
+    /// Checks if the requested proof reference is permitted by the main uri.
+    pub fn permits(&self, requested: &ProofReference<'a>) -> bool {
+        if self == requested {
+            return true;
+        }
 
-                // Allow ucan://<did>/scheme as a subset of ucan://<did>/*
-                if let (
-                    ProofReference::AllUcansByDid(did1),
-                    ProofReference::AllUcansByDidAndScheme(did2, _),
-                ) = (pr1, pr2)
-                {
-                    if did1 == did2 {
-                        return true;
-                    }
-                }
+        // Allow ucan:<cid> as a subset of ucan:./*
+        if let (ProofReference::AllProofsInCurrentUcan, ProofReference::SpecificProofByCid(_)) =
+            (self, requested)
+        {
+            return true;
+        }
+
+        // Allow ucan://<did>/scheme as a subset of ucan://<did>/*
+        if let (
+            ProofReference::AllUcansByDid(did1),
+            ProofReference::AllUcansByDidAndScheme(did2, _),
+        ) = (self, requested)
+        {
+            if did1 == did2 {
+                return true;
             }
-            (ResourceUri::Other(uri1), ResourceUri::Other(uri2)) => {
-                if uri1.as_str() == uri2.as_str() {
-                    return true;
-                }
+        }
 
-                // Allow a subset of the path delimited by `/`
-                let uri1 = format!("{}/", uri1.as_str().trim_end_matches('/'));
-                if uri2.as_str().starts_with(&uri1) {
-                    return true;
-                }
-            }
-            _ => (),
+        false
+    }
+}
+
+impl NonUcanUri {
+    /// Checks if the requested non-ucan uri is permitted by the main uri.
+    pub fn permits(&self, requested: &NonUcanUri) -> bool {
+        if self.as_str() == requested.as_str() {
+            return true;
+        }
+
+        // Allow a subset of the path delimited by `/`
+        let main = format!("{}/", self.as_str().trim_end_matches('/'));
+        if requested.as_str().starts_with(&main) {
+            return true;
         }
 
         false
@@ -194,15 +204,20 @@ impl FromStr for NonUcanUri {
     type Err = UcanError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        Ok(NonUcanUri(
-            Uri::parse_from(s.to_owned()).map_err(|(_, e)| UcanError::UriParseError(e))?,
-        ))
+        let uri = Uri::parse_from(s.to_owned()).map_err(|(_, e)| UcanError::UriParseError(e))?;
+        NonUcanUri::try_from(uri)
     }
 }
 
-impl From<Uri<String>> for NonUcanUri {
-    fn from(uri: Uri<String>) -> Self {
-        NonUcanUri(uri)
+impl TryFrom<Uri<String>> for NonUcanUri {
+    type Error = UcanError;
+
+    fn try_from(uri: Uri<String>) -> Result<Self, Self::Error> {
+        if uri.scheme().map_or(false, |s| s.as_str() == "ucan") {
+            return Err(UcanError::InvalidNonUcanUri(uri.to_string()));
+        }
+
+        Ok(NonUcanUri(uri))
     }
 }
 
@@ -353,6 +368,11 @@ mod tests {
             uri,
             ResourceUri::Other(NonUcanUri::from_str("https://example.com")?)
         );
+
+        // Fails
+
+        let non_ucan_uri = NonUcanUri::from_str("ucan:*");
+        assert!(non_ucan_uri.is_err());
 
         Ok(())
     }

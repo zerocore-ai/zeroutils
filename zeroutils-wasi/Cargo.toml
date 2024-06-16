@@ -15,7 +15,4 @@ bytes.workspace = true
 futures.workspace = true
 thiserror.workspace = true
 tracing = "0.1.40"
-wasmtime = { git = "https://github.com/bytecodealliance/wasmtime", rev = "1cf3a9dad", features = [
-    "component-model",
-    "async",
-] }
+wasmtime.workspace = true

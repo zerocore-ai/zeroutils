@@ -160,7 +160,7 @@ where
     S: IpldStore,
 {
     /// Builds a UCAN from the specified components.
-    pub fn build(self) -> UcanResult<Ucan<'a, S, ()>> {
+    pub fn build(self) -> Ucan<'a, S, ()> {
         let payload = UcanPayload {
             issuer: self.issuer,
             audience: self.audience,
@@ -173,9 +173,7 @@ where
             store: self.store,
         };
 
-        let ucan = Ucan::from_parts((), payload, ());
-        ucan.validate()?;
-        Ok(ucan)
+        Ucan::from_parts((), payload, ())
     }
 }
 
@@ -190,7 +188,7 @@ where
     {
         let issuer_did = WrappedDidWebKey::from_key(keypair, Base::Base58Btc)?;
         self.issuer(issuer_did)
-            .build()?
+            .build()
             .use_alg(keypair.alg())
             .sign(keypair)
     }
@@ -206,7 +204,7 @@ where
     where
         K: Sign + JwsAlgName + GetPublicKey,
     {
-        self.build()?.sign(keypair)
+        self.build().sign(keypair)
     }
 }
 
@@ -260,7 +258,7 @@ mod tests {
             .capabilities(caps!()?)
             .proofs(vec![])
             .store(PlaceholderStore)
-            .build()?;
+            .build();
 
         assert_eq!(
             ucan.payload.issuer,
@@ -286,8 +284,11 @@ mod tests {
         assert_eq!(ucan.payload.store, PlaceholderStore);
 
         // Sign the UCAN
+        let keypair = Ed25519KeyPair::generate(&mut rand::thread_rng())?;
+        let did = WrappedDidWebKey::from_key(&keypair, Base::Base58Btc)?;
+
         let ucan = UcanBuilder::default()
-            .issuer("did:wk:b44aqepqvrvaix2aosv2oluhoa3kf7yan6xevmn2asn3scuev2iydukkv")
+            .issuer(did)
             .audience("did:wk:b5ua5l4wgcp46zrtn3ihjjmu5gbyhusmyt5bianl5ov2yrvj7wnh4vti")
             .expiration(Some(now + Duration::from_secs(360_000)))
             .not_before(now)
@@ -295,7 +296,7 @@ mod tests {
             .facts(vec![])
             .capabilities(caps!()?)
             .proofs(vec![])
-            .sign(&Ed25519KeyPair::generate(&mut rand::thread_rng())?)?;
+            .sign(&keypair)?;
 
         assert!(ucan.validate().is_ok());
 

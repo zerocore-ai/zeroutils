@@ -5,22 +5,25 @@ use crate::CapabilitiesDefinition;
 //--------------------------------------------------------------------------------------------------
 
 /// Represents a root authority that can issue UCANs.
-pub struct RootAuthority<'a, K> {
+pub struct RootAuthority<K> {
     /// The key of the root authority.
     pub key: K,
 
     /// The capabilities available to the root authority.
-    pub capabilities: CapabilitiesDefinition<'a>,
+    pub capabilities_definition: CapabilitiesDefinition,
 }
 
 //--------------------------------------------------------------------------------------------------
 // Methods
 //--------------------------------------------------------------------------------------------------
 
-impl<'a, K> RootAuthority<'a, K> {
+impl<K> RootAuthority<K> {
     /// Creates a new root authority.
-    pub fn new(key: K, capabilities: CapabilitiesDefinition<'a>) -> Self {
-        Self { key, capabilities }
+    pub fn new(key: K, capabilities_definition: CapabilitiesDefinition) -> Self {
+        Self {
+            key,
+            capabilities_definition,
+        }
     }
 }
 

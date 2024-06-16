@@ -8,23 +8,48 @@ macro_rules! caps {
     {$(
         $uri:literal : {
             $( $ability:literal : [
-                $( $caveats:tt ),*
+                $( $caveats:tt ),+
             ]),+ $(,)?
         }
     ),* $(,)?} => {
         (|| {
             #[allow(unused_mut)]
             let mut capabilities = $crate::Capabilities::new();
+
             $(
                 let mut ability_list = std::collections::BTreeMap::new();
                 $(
-                    let caveats = $crate::caveats![$($caveats),*]?;
+                    let caveats = $crate::caveats![$($caveats),+]?;
                     ability_list.insert($ability.parse()?, caveats);
                 )+
-                let abilities = $crate::Abilities::from_iter(ability_list)?;
+                let abilities = $crate::Abilities::try_from_iter(ability_list)?;
                 capabilities.insert(<$crate::ResourceUri as std::str::FromStr>::from_str($uri)?, abilities)?;
             )*
+
             $crate::Ok(capabilities)
+        })()
+    };
+}
+
+/// A macro for defining a set of capabilities.
+#[macro_export]
+macro_rules! caps_def {
+    {$(
+        $uri:literal : {
+            $( $ability:literal : [
+                $( $caveatsjtd:tt ),*
+            ]),+ $(,)?
+        }
+    ),* $(,)?} => {
+        (|| {
+            let mut caps_def = $crate::CapabilitiesDefinition::new();
+            $(
+                $({
+                    let caveatsjtd =  $crate::caveats_def![$($caveatsjtd),*]?;
+                    caps_def.insert($crate::CapabilityDefinitionTuple($uri.parse()?, $ability.parse()?, caveatsjtd));
+                })+
+            )*
+            $crate::Ok(caps_def)
         })()
     };
 }
@@ -39,7 +64,7 @@ macro_rules! abilities {
                 let caveats = $crate::caveats![$($caveats),*]?;
                 map.insert($ability.parse()?, caveats);
             )*
-            $crate::Abilities::from_iter(map)
+            $crate::Abilities::try_from_iter(map)
         })()
     };
 }
@@ -47,25 +72,35 @@ macro_rules! abilities {
 /// A macro for defining a set of caveats.
 #[macro_export]
 macro_rules! caveats {
-    [$({
-        $( $caveat:literal : $json:tt ),* $(,)?
-    }),* $(,)?] => {
+    [$( $json:tt ),* $(,)?] => {
         {
             let mut caveat_list = std::vec::Vec::new();
             $(
-                #[allow(unused_mut)]
-                let mut caveat = $crate::serde_json::Map::new();
-                $(
-                    caveat.insert($caveat.to_string(), $crate::serde_json::json!($json));
-                )*
-                caveat_list.push(caveat);
-            )*
-            if caveat_list.is_empty() {
-                caveat_list.push($crate::serde_json::Map::new());
-            }
+                caveat_list.push(
+                    $crate::Caveat::try_from(
+                        $crate::serde_json::json!($json)
+                    )?
+                );
+            )+
 
-            $crate::Caveats::from_iter(caveat_list)
+            $crate::Caveats::try_from_iter(caveat_list)
         }
+    };
+}
+
+/// A macro for defining the type of caveats that are allowed for a capability.
+#[macro_export]
+macro_rules! caveats_def {
+    [$( $json:tt ),* $(,)?] => {
+        (|| {
+            let caveat_array = [
+                $(
+                    $crate::serde_json::json!($json)
+                ),*
+            ];
+
+            $crate::CaveatsDefinition::try_from_iter(caveat_array)
+        })()
     };
 }
 
@@ -75,9 +110,9 @@ macro_rules! caveats {
 
 #[cfg(test)]
 mod tests {
-    use serde_json::Map;
+    use serde_json::json;
 
-    use crate::{Abilities, Capabilities, Caveats};
+    use crate::{Abilities, Capabilities, Caveat, Caveats, CaveatsDefinition};
 
     #[test]
     fn test_capabilities_macro() -> anyhow::Result<()> {
@@ -111,35 +146,32 @@ mod tests {
             let mut capabilities = Capabilities::new();
 
             capabilities.insert("example://example.com/public/photos/".parse()?, {
-                Abilities::from_iter([
+                Abilities::try_from_iter([
                     ("crud/read".parse()?, Caveats::any()),
                     ("crud/delete".parse()?, Caveats::any()),
                 ])?
             })?;
 
             capabilities.insert("mailto:username@example.com".parse()?, {
-                Abilities::from_iter([
+                Abilities::try_from_iter([
                     ("msg/send".parse()?, Caveats::any()),
                     (
                         "msg/receive".parse()?,
-                        Caveats::from_iter([Map::from_iter(vec![
-                            ("max_count".into(), serde_json::json!(5)),
-                            (
-                                "templates".into(),
-                                serde_json::json!(["newsletter", "marketing"]),
-                            ),
-                        ])])?,
+                        Caveats::try_from_iter([Caveat::try_from(json!({
+                            "max_count": 5,
+                            "templates": ["newsletter", "marketing"]
+                        }))?])?,
                     ),
                 ])?
             })?;
 
             capabilities.insert("dns:example.com".parse()?, {
-                Abilities::from_iter([(
+                Abilities::try_from_iter([(
                     "crud/create".parse()?,
-                    Caveats::from_iter([
-                        Map::from_iter(vec![("type".into(), serde_json::json!("A"))]),
-                        Map::from_iter(vec![("type".into(), serde_json::json!("CNAME"))]),
-                        Map::from_iter(vec![("type".into(), serde_json::json!("TXT"))]),
+                    Caveats::try_from_iter([
+                        Caveat::try_from(json!({"type": "A"}))?,
+                        Caveat::try_from(json!({"type": "CNAME"}))?,
+                        Caveat::try_from(json!({"type": "TXT"}))?,
                     ])?,
                 )])?
             })?;
@@ -153,19 +185,93 @@ mod tests {
     }
 
     #[test]
+    fn test_capabilities_definition_macro() -> anyhow::Result<()> {
+        // let definition = caps_def! { "zerodb://": { "db/table/read": [] } }?;
+
+        // let definition = caps_def! {
+        //     "example://example.com/public/photos/": {
+        //         "crud/read": [
+        //             {
+        //                 "properties": {
+        //                     "status": { "type": "string" }
+        //                 },
+        //                 "optionalProperties": {
+        //                     "public": { "type": "boolean" }
+        //                 }
+        //             }
+        //         ],
+        //         "crud/delete": [{}],
+        //     },
+        // }?;
+
+        // let expected_definition = {
+        //     let mut capabilities = Capabilities::new();
+
+        //     capabilities.insert("example://example.com/public/photos/".parse()?, {
+        //         Abilities::try_from_iter([
+        //             ("crud/read".parse()?, Caveats::any()),
+        //             ("crud/delete".parse()?, Caveats::any()),
+        //         ])?
+        //     })?;
+
+        //     CapabilitiesDefinition::try_from_iter(capabilities)?
+        // };
+
+        // assert_eq!(definition, expected_definition);
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_caveats_def_macro() -> anyhow::Result<()> {
+        let caveats = caveats_def! [
+            {
+                "properties": {
+                    "maximum_allowed": { "type": "int32" }
+                }
+            },
+            {
+                "properties": {
+                    "status": { "type": "string" }
+                },
+                "optionalProperties": {
+                    "public": { "type": "boolean" }
+                }
+            }
+        ]?;
+
+        let expected_caveats = CaveatsDefinition::try_from_iter([
+            json!({
+                "properties": {
+                    "maximum_allowed": { "type": "int32" }
+                }
+            }),
+            json!({
+                "properties": {
+                    "status": { "type": "string" }
+                },
+                "optionalProperties": {
+                    "public": { "type": "boolean" }
+                }
+            }),
+        ])?;
+
+        assert_eq!(caveats, expected_caveats);
+
+        Ok(())
+    }
+
+    #[test]
     fn test_caveats_macro() -> anyhow::Result<()> {
         let caveats = caveats! [{
             "max_count": 5,
             "templates": ["newsletter", "marketing"]
         }]?;
 
-        let expected_caveats = Caveats::from_iter([Map::from_iter(vec![
-            ("max_count".into(), serde_json::json!(5)),
-            (
-                "templates".into(),
-                serde_json::json!(["newsletter", "marketing"]),
-            ),
-        ])])?;
+        let expected_caveats = Caveats::try_from_iter([Caveat::try_from(json!({
+            "max_count": 5,
+            "templates": ["newsletter", "marketing"]
+        }))?])?;
 
         assert_eq!(caveats, expected_caveats);
 
@@ -179,7 +285,7 @@ mod tests {
             "crud/delete": [{}],
         }?;
 
-        let expected_abilities = Abilities::from_iter([
+        let expected_abilities = Abilities::try_from_iter([
             ("crud/read".parse()?, Caveats::any()),
             ("crud/delete".parse()?, Caveats::any()),
         ])?;

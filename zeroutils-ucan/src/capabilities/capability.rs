@@ -114,8 +114,7 @@ impl<'a> Capabilities<'a> {
 
 impl Abilities {
     /// Creates a new `Abilities` instance from an iterator.
-    #[allow(clippy::should_implement_trait)]
-    pub fn from_iter(iter: impl IntoIterator<Item = (Ability, Caveats)>) -> UcanResult<Self> {
+    pub fn try_from_iter(iter: impl IntoIterator<Item = (Ability, Caveats)>) -> UcanResult<Self> {
         let abilities: BTreeMap<_, _> = iter.into_iter().collect();
         if abilities.is_empty() {
             return Err(UcanError::NoAbility);
@@ -132,6 +131,13 @@ impl Abilities {
     /// Gets the caveats for a given ability.
     pub fn get(&self, ability: &Ability) -> Option<&Caveats> {
         self.0.get(ability)
+    }
+}
+
+impl CapabilityTuple {
+    /// Checks if the requested capability tuple is permitted by the main capability tuple.
+    pub fn permits(&self, requested: &CapabilityTuple) -> bool {
+        self.0.permits(&requested.0) && self.1.permits(&requested.1) && self.2.permits(&requested.2)
     }
 }
 
@@ -178,7 +184,13 @@ impl TryFrom<BTreeMap<Ability, Caveats>> for Abilities {
     type Error = UcanError;
 
     fn try_from(map: BTreeMap<Ability, Caveats>) -> Result<Self, Self::Error> {
-        Abilities::from_iter(map)
+        Abilities::try_from_iter(map)
+    }
+}
+
+impl From<(NonUcanUri, Ability, Caveats)> for CapabilityTuple {
+    fn from(tuple: (NonUcanUri, Ability, Caveats)) -> Self {
+        CapabilityTuple(tuple.0, tuple.1, tuple.2)
     }
 }
 
@@ -218,7 +230,7 @@ where
 
 #[cfg(test)]
 mod tests {
-    use serde_json::Map;
+    use serde_json::json;
 
     use crate::{caps, caveats};
 
@@ -231,10 +243,10 @@ mod tests {
         assert!(capabilities
             .insert(
                 "example://example.com/public/photos/".parse()?,
-                Abilities::from_iter([
+                Abilities::try_from_iter([
                     (
                         "crud/read".parse()?,
-                        Caveats::from_iter([Map::from_iter([("public".into(), true.into())])])?,
+                        Caveats::try_from_iter([json!({"public": true})])?,
                     ),
                     ("crud/delete".parse()?, Caveats::any()),
                 ])?,
@@ -245,16 +257,16 @@ mod tests {
         assert!(capabilities
             .insert(
                 "ucan:*".parse()?,
-                Abilities::from_iter([("crud/delete".parse()?, Caveats::any())])?,
+                Abilities::try_from_iter([("crud/delete".parse()?, Caveats::any())])?,
             )
             .is_err());
 
         assert!(capabilities
             .insert(
                 "ucan:./*".parse()?,
-                Abilities::from_iter([(
+                Abilities::try_from_iter([(
                     "ucan/*".parse()?,
-                    Caveats::from_iter([Map::from_iter([("public".into(), true.into())])])?
+                    Caveats::try_from_iter([json!({"public": true})])?
                 )])?,
             )
             .is_err());
@@ -262,9 +274,9 @@ mod tests {
         assert!(capabilities
             .insert(
                 "ucan://did:wk:z6MkqAywjQVwsr7m1HMamynCZZjH8AKPqYZNXwpHg842pPsG/fs".parse()?,
-                Abilities::from_iter([(
+                Abilities::try_from_iter([(
                     "crud/*".parse()?,
-                    Caveats::from_iter([Map::from_iter([("public".into(), true.into())])])?
+                    Caveats::try_from_iter([json!({"public": true})])?
                 )])?,
             )
             .is_err());
@@ -274,7 +286,7 @@ mod tests {
 
     #[test]
     fn test_abilities_constructors() -> anyhow::Result<()> {
-        let abilities = Abilities::from_iter(vec![
+        let abilities = Abilities::try_from_iter(vec![
             ("crud/read".parse()?, Caveats::any()),
             ("crud/delete".parse()?, Caveats::any()),
         ])?;
@@ -282,7 +294,7 @@ mod tests {
         assert_eq!(abilities.len(), 2);
 
         // Empty abilities are invalid
-        assert!(Abilities::from_iter(vec![]).is_err());
+        assert!(Abilities::try_from_iter(vec![]).is_err());
 
         Ok(())
     }
