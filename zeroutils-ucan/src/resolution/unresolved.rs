@@ -7,7 +7,6 @@ use crate::{CapabilityTuple, Scheme};
 // Types
 //--------------------------------------------------------------------------------------------------
 
-
 /// Represents a unresolved capability.
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct UnresolvedCapWithRootIss {

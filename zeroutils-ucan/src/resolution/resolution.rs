@@ -9,9 +9,9 @@ use zeroutils_key::{GetPublicKey, IntoOwned};
 use zeroutils_store::IpldStore;
 
 use crate::{
-    AttenuationError, CapabilityTuple, ProofReference, ResolvedCapabilityTuple, ResourceUri, SignedUcan,
-    UcanError, UcanResult, Unresolved, UnresolvedCapWithRootIss, UnresolvedUcanWithAud,
-    UnresolvedUcanWithCid,
+    AttenuationError, CapabilityTuple, ProofReference, ResolvedCapabilities,
+    ResolvedCapabilityTuple, ResourceUri, SignedUcan, UcanError, UcanResult, Unresolved,
+    UnresolvedCapWithRootIss, UnresolvedUcanWithAud, UnresolvedUcanWithCid,
 };
 
 //--------------------------------------------------------------------------------------------------
@@ -34,7 +34,7 @@ where
         &self,
         root_key: &K,
         store: &S,
-    ) -> UcanResult<HashSet<ResolvedCapabilityTuple>>
+    ) -> UcanResult<ResolvedCapabilities>
     where
         K: GetPublicKey + Sync,
     {
@@ -67,7 +67,7 @@ where
         root_key: &K,
         trace: Trace,
         store: &S,
-    ) -> UcanResult<HashSet<ResolvedCapabilityTuple>>
+    ) -> UcanResult<ResolvedCapabilities>
     where
         K: GetPublicKey + Sync,
     {
@@ -120,7 +120,7 @@ where
                 HashSet::new(),
                 ucan_with_auds_unvalidated,
                 cap_with_root_iss,
-                HashSet::new(),
+                ResolvedCapabilities::new(),
                 true,
             )
         };
@@ -306,12 +306,12 @@ where
         HashSet<UnresolvedUcanWithCid>,
         HashSet<UnresolvedUcanWithAud>,
         HashSet<UnresolvedCapWithRootIss>,
-        HashSet<ResolvedCapabilityTuple>,
+        ResolvedCapabilities,
     ) {
         let mut unresolved_cap_with_root_iss = HashSet::new();
         let mut unresolved_ucan_with_cids = HashSet::new();
         let mut unresolved_ucan_with_auds = HashSet::new();
-        let mut resolved_capabilities = HashSet::new();
+        let mut resolved_capabilities = ResolvedCapabilities::new();
 
         for (resource, abilities) in self.payload.capabilities.iter() {
             match resource {
@@ -330,8 +330,9 @@ where
                             scheme: None,
                         };
 
-                        let resolved =
-                        ResolvedCapabilityTuple::ucan_all(self.payload.issuer.clone().into_owned());
+                        let resolved = ResolvedCapabilityTuple::ucan_all(
+                            self.payload.issuer.clone().into_owned(),
+                        );
 
                         unresolved_ucan_with_auds.insert(unresolved);
                         resolved_capabilities.insert(resolved);
