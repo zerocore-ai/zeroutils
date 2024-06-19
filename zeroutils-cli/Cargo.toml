@@ -1,0 +1,10 @@
+[package]
+name = "zeroutils-cli"
+version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+edition.workspace = true
+
+[dependencies]
+clap = "4.5.7"

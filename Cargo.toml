@@ -1,5 +1,6 @@
 [workspace]
 members = [
+    "zeroutils-cli",
     "zeroutils-config",
     "zeroutils-did-wk",
     "zeroutils-key",
