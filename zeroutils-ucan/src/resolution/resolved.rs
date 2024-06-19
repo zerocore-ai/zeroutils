@@ -125,3 +125,47 @@ impl IntoIterator for ResolvedCapabilities {
         self.0.into_iter()
     }
 }
+
+//--------------------------------------------------------------------------------------------------
+// Tests
+//--------------------------------------------------------------------------------------------------
+
+#[cfg(test)]
+mod tests {
+    use std::str::FromStr;
+
+    use crate::caveats;
+
+    use super::*;
+
+    #[test]
+    fn test_resolved_capability_permits() -> anyhow::Result<()> {
+        // Permitted
+        let resolved_capability = ResolvedCapabilityTuple(
+            ResolvedResource::NonUcan(NonUcanUri::from_str("zerodb://public")?),
+            "crud/*".parse()?,
+            Caveats::any(),
+        );
+
+        assert!(resolved_capability.permits(&ResolvedCapabilityTuple(
+            ResolvedResource::NonUcan(NonUcanUri::from_str("zerodb://public")?),
+            "crud/*".parse()?,
+            Caveats::any(),
+        )));
+
+        assert!(resolved_capability.permits(&ResolvedCapabilityTuple(
+            ResolvedResource::NonUcan(NonUcanUri::from_str("zerodb://public/test")?),
+            "crud/READ".parse()?,
+            caveats![{ "test": 1 }]?,
+        )));
+
+        // Unpermitted
+        assert!(!resolved_capability.permits(&ResolvedCapabilityTuple(
+            ResolvedResource::NonUcan(NonUcanUri::from_str("zerodb://private")?),
+            "crud/*".parse()?,
+            Caveats::any(),
+        )));
+
+        Ok(())
+    }
+}
