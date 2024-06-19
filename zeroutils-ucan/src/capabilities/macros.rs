@@ -31,29 +31,6 @@ macro_rules! caps {
     };
 }
 
-/// A macro for defining a set of capabilities.
-#[macro_export]
-macro_rules! caps_def {
-    {$(
-        $uri:literal : {
-            $( $ability:literal : [
-                $( $caveatsjtd:tt ),*
-            ]),+ $(,)?
-        }
-    ),* $(,)?} => {
-        (|| {
-            let mut caps_def = $crate::CapabilitiesDefinition::new();
-            $(
-                $({
-                    let caveatsjtd =  $crate::caveats_def![$($caveatsjtd),*]?;
-                    caps_def.insert($crate::CapabilityDefinitionTuple($uri.parse()?, $ability.parse()?, caveatsjtd));
-                })+
-            )*
-            $crate::Ok(caps_def)
-        })()
-    };
-}
-
 /// A macro for defining a set of abilities.
 #[macro_export]
 macro_rules! abilities {
@@ -88,22 +65,6 @@ macro_rules! caveats {
     };
 }
 
-/// A macro for defining the type of caveats that are allowed for a capability.
-#[macro_export]
-macro_rules! caveats_def {
-    [$( $json:tt ),* $(,)?] => {
-        (|| {
-            let caveat_array = [
-                $(
-                    $crate::serde_json::json!($json)
-                ),*
-            ];
-
-            $crate::CaveatsDefinition::try_from_iter(caveat_array)
-        })()
-    };
-}
-
 //--------------------------------------------------------------------------------------------------
 // Tests
 //--------------------------------------------------------------------------------------------------
@@ -112,7 +73,7 @@ macro_rules! caveats_def {
 mod tests {
     use serde_json::json;
 
-    use crate::{Abilities, Capabilities, Caveat, Caveats, CaveatsDefinition};
+    use crate::{Abilities, Capabilities, Caveat, Caveats};
 
     #[test]
     fn test_capabilities_macro() -> anyhow::Result<()> {
@@ -180,83 +141,6 @@ mod tests {
         };
 
         assert_eq!(capabilities, expected_capabilities);
-
-        Ok(())
-    }
-
-    #[test]
-    fn test_capabilities_definition_macro() -> anyhow::Result<()> {
-        // let definition = caps_def! { "zerodb://": { "db/table/read": [] } }?;
-
-        // let definition = caps_def! {
-        //     "example://example.com/public/photos/": {
-        //         "crud/read": [
-        //             {
-        //                 "properties": {
-        //                     "status": { "type": "string" }
-        //                 },
-        //                 "optionalProperties": {
-        //                     "public": { "type": "boolean" }
-        //                 }
-        //             }
-        //         ],
-        //         "crud/delete": [{}],
-        //     },
-        // }?;
-
-        // let expected_definition = {
-        //     let mut capabilities = Capabilities::new();
-
-        //     capabilities.insert("example://example.com/public/photos/".parse()?, {
-        //         Abilities::try_from_iter([
-        //             ("crud/read".parse()?, Caveats::any()),
-        //             ("crud/delete".parse()?, Caveats::any()),
-        //         ])?
-        //     })?;
-
-        //     CapabilitiesDefinition::try_from_iter(capabilities)?
-        // };
-
-        // assert_eq!(definition, expected_definition);
-
-        Ok(())
-    }
-
-    #[test]
-    fn test_caveats_def_macro() -> anyhow::Result<()> {
-        let caveats = caveats_def! [
-            {
-                "properties": {
-                    "maximum_allowed": { "type": "int32" }
-                }
-            },
-            {
-                "properties": {
-                    "status": { "type": "string" }
-                },
-                "optionalProperties": {
-                    "public": { "type": "boolean" }
-                }
-            }
-        ]?;
-
-        let expected_caveats = CaveatsDefinition::try_from_iter([
-            json!({
-                "properties": {
-                    "maximum_allowed": { "type": "int32" }
-                }
-            }),
-            json!({
-                "properties": {
-                    "status": { "type": "string" }
-                },
-                "optionalProperties": {
-                    "public": { "type": "boolean" }
-                }
-            }),
-        ])?;
-
-        assert_eq!(caveats, expected_caveats);
 
         Ok(())
     }

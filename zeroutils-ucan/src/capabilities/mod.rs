@@ -1,7 +1,6 @@
 mod ability;
 mod capability;
 mod caveats;
-mod definition;
 mod macros;
 
 //--------------------------------------------------------------------------------------------------
@@ -11,4 +10,3 @@ mod macros;
 pub use ability::*;
 pub use capability::*;
 pub use caveats::*;
-pub use definition::*;
