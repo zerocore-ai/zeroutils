@@ -24,8 +24,8 @@ use super::StoreResult;
 ///
 /// ## Important
 ///
-/// The trait is designed for cheap clones, therefore it is recommended to implement `Clone` for your store with
-/// inexpensive cloning semantics.
+/// The trait is designed for cheap clones, therefore it is recommended to implement `Clone` with inexpensive cloning
+/// semantics.
 ///
 /// An implementation is responsible for how it encodes types and how encoded IPLD data is broken down into smaller blocks
 /// when it exceeds a certain pre-determined size.

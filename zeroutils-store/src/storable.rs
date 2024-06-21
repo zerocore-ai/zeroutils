@@ -16,5 +16,5 @@ where
     fn store(&self) -> impl Future<Output = StoreResult<Cid>>;
 
     /// Loads the type from the IPLD store.
-    fn load(store: S, cid: &Cid) -> impl Future<Output = StoreResult<Self>>;
+    fn load(cid: &Cid, store: S) -> impl Future<Output = StoreResult<Self>>;
 }

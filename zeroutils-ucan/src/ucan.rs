@@ -10,7 +10,7 @@ use serde::{
 };
 use zeroutils_did_wk::WrappedDidWebKey;
 use zeroutils_key::{JwsAlgName, JwsAlgorithm, Sign, Verify};
-use zeroutils_store::{IpldStore, PlaceholderStore};
+use zeroutils_store::{IpldStore, PlaceholderStore, Storable, StoreError, StoreResult};
 
 use crate::{
     DefaultUcanBuilder, UcanBuilder, UcanError, UcanHeader, UcanPayload, UcanPayloadSerializable,
@@ -298,13 +298,6 @@ where
 
         Ok(())
     }
-
-    /// Persists the UCAN to the IPLD store and returns its CID.
-    pub async fn persist(&self) -> UcanResult<Cid> {
-        let encoded = self.to_string();
-        let cid = self.payload.store.put_bytes(encoded).await?;
-        Ok(cid)
-    }
 }
 
 //--------------------------------------------------------------------------------------------------
@@ -396,6 +389,22 @@ where
             .finish()
     }
 }
+
+impl<'a, S> Storable<S> for SignedUcan<'a, S>
+where
+    S: IpldStore,
+{
+    async fn store(&self) -> StoreResult<Cid> {
+        self.payload.store.put_bytes(self.to_string()).await
+    }
+
+    async fn load(cid: &Cid, store: S) -> StoreResult<Self> {
+        let encoded = store.get_bytes(cid).await?;
+        let encoded = String::from_utf8(encoded.to_vec()).map_err(StoreError::custom)?;
+        SignedUcan::try_from_str(encoded, store).map_err(StoreError::custom)
+    }
+}
+
 //--------------------------------------------------------------------------------------------------
 // Tests
 //--------------------------------------------------------------------------------------------------
@@ -498,7 +507,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_ucan_persist() -> anyhow::Result<()> {
+    async fn test_ucan_stores_and_loads() -> anyhow::Result<()> {
         let now = SystemTime::now();
         let store = MemoryStore::default();
         let base = Base::Base58Btc;
@@ -519,10 +528,8 @@ mod tests {
             }?)
             .sign(&principal_0_key)?;
 
-        let cid = ucan.persist().await?;
-
-        let bytes = store.get_bytes(&cid).await?;
-        let stored_ucan = SignedUcan::try_from_str(&String::from_utf8(bytes.to_vec())?, store)?;
+        let cid = ucan.store().await?;
+        let stored_ucan = SignedUcan::load(&cid, store).await?;
 
         assert_eq!(ucan, stored_ucan);
 
