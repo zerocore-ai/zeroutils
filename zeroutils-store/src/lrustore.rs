@@ -52,7 +52,7 @@ impl LruStore {
 //--------------------------------------------------------------------------------------------------
 
 impl IpldStore for LruStore {
-    async fn put<T>(&self, data: T) -> StoreResult<Cid>
+    async fn put<T>(&self, data: &T) -> StoreResult<Cid>
     where
         T: Serialize + IpldReferences,
     {
@@ -211,7 +211,7 @@ mod tests {
             ],
         };
 
-        let cid_1 = store.put(data_1.clone()).await?;
+        let cid_1 = store.put(&data_1).await?;
         let res = store.get::<fixture::Directory>(cid_1).await?;
         assert_eq!(res, data_1);
 
@@ -242,7 +242,7 @@ mod tests {
             ],
         };
 
-        let cid = store.put(data.clone()).await?;
+        let cid = store.put(&data).await?;
         let res = store.references(cid).await?;
         let expected = data.entries.iter().cloned().collect::<HashSet<_>>();
 

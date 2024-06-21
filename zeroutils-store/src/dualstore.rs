@@ -76,7 +76,7 @@ where
     }
 
     /// Saves an IPLD serializable object to a chosen store and returns the `Cid` to it.
-    pub async fn put_into<T>(&self, data: T, choice: Choice) -> StoreResult<Cid>
+    pub async fn put_into<T>(&self, data: &T, choice: Choice) -> StoreResult<Cid>
     where
         T: Serialize + IpldReferences,
     {
@@ -130,7 +130,7 @@ where
     A: IpldStore,
     B: IpldStore,
 {
-    async fn put<T>(&self, data: T) -> StoreResult<Cid>
+    async fn put<T>(&self, data: &T) -> StoreResult<Cid>
     where
         T: Serialize + IpldReferences,
     {
@@ -201,13 +201,13 @@ mod tests {
         let store_b = LruStore::new(2);
         let dual_store = DualStore::new(store_a, store_b, Default::default());
 
-        let cid_0 = dual_store.put_into("hello", Choice::A).await?;
-        let cid_1 = dual_store.put_into(250, Choice::B).await?;
-        let cid_2 = dual_store.put_into("world", Choice::A).await?;
-        let cid_3 = dual_store.put_into(500, Choice::B).await?;
+        let cid_0 = dual_store.put_into(&"hello", Choice::A).await?;
+        let cid_1 = dual_store.put_into(&250, Choice::B).await?;
+        let cid_2 = dual_store.put_into(&"world", Choice::A).await?;
+        let cid_3 = dual_store.put_into(&500, Choice::B).await?;
 
         // This should evict the first block from the LRU store.
-        let cid_4 = dual_store.put_into(1000, Choice::B).await?;
+        let cid_4 = dual_store.put_into(&1000, Choice::B).await?;
 
         assert_eq!(dual_store.get::<String>(cid_0).await?, "hello");
         assert_eq!(dual_store.get::<String>(cid_2).await?, "world");

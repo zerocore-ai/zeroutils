@@ -1,6 +1,8 @@
 //! Error types of the zeroraft crate.
 
-use std::{collections::HashSet, convert::Infallible, time::SystemTime};
+use std::{
+    collections::HashSet, convert::Infallible, error::Error, fmt::Display, time::SystemTime,
+};
 
 use libipld::{cid::Version, Cid};
 use serde_json::Value;
@@ -160,6 +162,10 @@ pub enum UcanError {
     /// Not before constraint violated
     #[error("Not before constraint violated: {0:?}, {1:?}")]
     NotBeforeConstraintViolated(Option<SystemTime>, Option<SystemTime>),
+
+    /// Custom error.
+    #[error("Custom error: {0}")]
+    Custom(#[from] AnyError),
 }
 
 /// Defines the attenuation errors that can occur in UCAN operations.
@@ -210,6 +216,25 @@ pub struct Unresolved(
     pub HashSet<UnresolvedCapWithRootIss>,
 );
 
+/// An error that can represent any error.
+#[derive(Debug)]
+pub struct AnyError {
+    error: anyhow::Error,
+}
+
+//--------------------------------------------------------------------------------------------------
+// Methods
+//--------------------------------------------------------------------------------------------------
+
+impl UcanError {
+    /// Creates a new `Err` result.
+    pub fn custom(error: impl Into<anyhow::Error>) -> UcanError {
+        UcanError::Custom(AnyError {
+            error: error.into(),
+        })
+    }
+}
+
 //--------------------------------------------------------------------------------------------------
 // Trait Implementations
 //--------------------------------------------------------------------------------------------------
@@ -231,6 +256,20 @@ impl
         Self(value.0, value.1, value.2)
     }
 }
+
+impl PartialEq for AnyError {
+    fn eq(&self, other: &Self) -> bool {
+        self.error.to_string() == other.error.to_string()
+    }
+}
+
+impl Display for AnyError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.error)
+    }
+}
+
+impl Error for AnyError {}
 
 //--------------------------------------------------------------------------------------------------
 // Functions

@@ -1,16 +1,20 @@
 use std::{
     fmt::{Debug, Display},
-    str::FromStr,
+    marker::PhantomData,
 };
 
 use libipld::Cid;
-use serde::{Deserialize, Serialize};
+use serde::{
+    de::{self, DeserializeSeed},
+    Deserialize, Deserializer, Serialize,
+};
 use zeroutils_did_wk::WrappedDidWebKey;
 use zeroutils_key::{JwsAlgName, JwsAlgorithm, Sign, Verify};
 use zeroutils_store::{IpldStore, PlaceholderStore};
 
 use crate::{
-    DefaultUcanBuilder, UcanBuilder, UcanError, UcanHeader, UcanPayload, UcanResult, UcanSignature,
+    DefaultUcanBuilder, UcanBuilder, UcanError, UcanHeader, UcanPayload, UcanPayloadSerializable,
+    UcanResult, UcanSignature,
 };
 
 //--------------------------------------------------------------------------------------------------
@@ -54,7 +58,7 @@ where
 /// This implementation currently only supports the `did:wk` DID method.
 ///
 /// [ucan]: https://github.com/ucan-wg/spec
-pub type SignedUcan<'a, S = PlaceholderStore> = Ucan<'a, S, UcanHeader, UcanSignature>;
+pub type SignedUcan<'a, S> = Ucan<'a, S, UcanHeader, UcanSignature>;
 
 /// Represents an unsigned [UCAN (User-Controlled Authorization Network)][ucan] token without a signature.
 ///
@@ -70,22 +74,36 @@ pub type SignedUcan<'a, S = PlaceholderStore> = Ucan<'a, S, UcanHeader, UcanSign
 pub type UnsignedUcan<'a, S, H = ()> = Ucan<'a, S, H, ()>;
 
 //--------------------------------------------------------------------------------------------------
-// Types: Serde
+// Types: Serializable
 //--------------------------------------------------------------------------------------------------
 
 #[derive(Serialize, Deserialize)]
 struct UnsignedUcanSerializable<'a, H> {
     header: H,
-    payload: UcanPayload<'a, PlaceholderStore>,
+    payload: UcanPayloadSerializable<'a>,
+}
+
+struct UnsignedUcanDeserializeSeed<'a, S, H> {
+    store: S,
+    phantom: PhantomData<&'a H>,
 }
 
 //--------------------------------------------------------------------------------------------------
 // Methods
 //--------------------------------------------------------------------------------------------------
 
+impl<'a, S, H> UnsignedUcanDeserializeSeed<'a, S, H> {
+    pub fn new(store: S) -> Self {
+        Self {
+            store,
+            phantom: PhantomData,
+        }
+    }
+}
+
 impl Ucan<'_, PlaceholderStore> {
     /// Creates a convenience builder for constructing a new UCAN.
-    pub fn builder<'a>() -> DefaultUcanBuilder<'a> {
+    pub fn builder() -> DefaultUcanBuilder {
         UcanBuilder::default()
     }
 }
@@ -120,18 +138,6 @@ where
             header,
             payload,
             signature: signature.into(),
-        }
-    }
-
-    /// Transforms the Ucan to use a different IPLD store.
-    pub fn use_store<T>(self, store: T) -> Ucan<'a, T, H, V>
-    where
-        T: IpldStore,
-    {
-        Ucan {
-            header: self.header,
-            payload: self.payload.use_store(store),
-            signature: self.signature,
         }
     }
 
@@ -174,16 +180,74 @@ where
     pub fn validate(&self) -> UcanResult<()> {
         self.payload.validate_time_bounds()
     }
+
+    /// Deserializes to UnsignedUcan using an arbitrary deserializer and store.
+    pub fn deserialize_with<'de>(
+        deserializer: impl Deserializer<'de, Error: Into<UcanError>>,
+        store: S,
+    ) -> UcanResult<Self>
+    where
+        H: Deserialize<'de> + 'a,
+    {
+        UnsignedUcanDeserializeSeed::new(store)
+            .deserialize(deserializer)
+            .map_err(Into::into)
+    }
+
+    fn try_from_serializable(ucan: UnsignedUcanSerializable<'a, H>, store: S) -> UcanResult<Self> {
+        let payload = UcanPayload::try_from_serializable(ucan.payload, store)?;
+        Ok(Self {
+            header: ucan.header,
+            payload,
+            signature: (),
+        })
+    }
+}
+
+impl<'a, S> UnsignedUcan<'a, S, UcanHeader>
+where
+    S: IpldStore,
+{
+    /// Attempts to create a `UnsignedUcan` instance by parsing provided Base64 encoded string.
+    pub fn try_from_str(string: impl AsRef<str>, store: S) -> UcanResult<Self> {
+        let parts: Vec<&str> = string.as_ref().split('.').collect();
+
+        if parts.len() != 2 {
+            return Err(UcanError::UnableToParse);
+        }
+
+        let header = parts[0].parse()?;
+        let payload = UcanPayload::try_from_str(parts[1], store)?;
+
+        Ok(Self {
+            header,
+            payload,
+            signature: (),
+        })
+    }
 }
 
 impl<'a, S> SignedUcan<'a, S>
 where
     S: IpldStore,
 {
-    /// Parses a signed UCAN from a string representation with a specified IPLD store.
-    pub fn with_store(string: impl AsRef<str>, store: S) -> UcanResult<SignedUcan<'static, S>> {
-        let ucan: SignedUcan<'static, PlaceholderStore> = string.as_ref().parse()?;
-        Ok(ucan.use_store(store))
+    /// Attempts to create a `SignedUcan` instance by parsing provided Base64 encoded string.
+    pub fn try_from_str(string: impl AsRef<str>, store: S) -> UcanResult<Self> {
+        let parts: Vec<&str> = string.as_ref().split('.').collect();
+
+        if parts.len() != 3 {
+            return Err(UcanError::UnableToParse);
+        }
+
+        let header = parts[0].parse()?;
+        let payload = UcanPayload::try_from_str(parts[1], store)?;
+        let signature = parts[2].parse()?;
+
+        Ok(Self {
+            header,
+            payload,
+            signature,
+        })
     }
 
     /// Validates the UCAN, ensuring that it is well-formed.
@@ -265,49 +329,6 @@ where
     }
 }
 
-impl<'a> FromStr for UnsignedUcan<'a, PlaceholderStore, UcanHeader> {
-    type Err = UcanError;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let parts: Vec<&str> = s.split('.').collect();
-
-        if parts.len() != 2 {
-            return Err(UcanError::UnableToParse);
-        }
-
-        let header = parts[0].parse()?;
-        let payload: UcanPayload<PlaceholderStore> = parts[1].parse()?;
-
-        Ok(Self {
-            header,
-            payload,
-            signature: (),
-        })
-    }
-}
-
-impl<'a> FromStr for SignedUcan<'a, PlaceholderStore> {
-    type Err = UcanError;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let parts: Vec<&str> = s.split('.').collect();
-
-        if parts.len() != 3 {
-            return Err(UcanError::UnableToParse);
-        }
-
-        let header = parts[0].parse()?;
-        let payload: UcanPayload<PlaceholderStore> = parts[1].parse()?;
-        let signature = parts[2].parse()?;
-
-        Ok(Self {
-            header,
-            payload,
-            signature,
-        })
-    }
-}
-
 impl<'a, H> Serialize for UnsignedUcan<'a, PlaceholderStore, H>
 where
     H: Serialize + Clone,
@@ -318,47 +339,26 @@ where
     {
         let parts = UnsignedUcanSerializable {
             header: self.header.clone(),
-            payload: self.payload.clone(),
+            payload: UcanPayloadSerializable::from(&self.payload),
         };
 
         parts.serialize(serializer)
     }
 }
 
-impl<'a> Serialize for SignedUcan<'a, PlaceholderStore> {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: serde::Serializer,
-    {
-        serializer.serialize_str(&self.to_string())
-    }
-}
-
-impl<'a, 'de, H> Deserialize<'de> for UnsignedUcan<'a, PlaceholderStore, H>
+impl<'a, 'de, S, H> DeserializeSeed<'de> for UnsignedUcanDeserializeSeed<'a, S, H>
 where
+    S: IpldStore,
     H: Deserialize<'de>,
 {
-    fn deserialize<D>(deserializer: D) -> Result<Ucan<'a, PlaceholderStore, H>, D::Error>
+    type Value = Ucan<'a, S, H>;
+
+    fn deserialize<D>(self, deserializer: D) -> Result<Self::Value, D::Error>
     where
         D: serde::Deserializer<'de>,
     {
-        let parts = UnsignedUcanSerializable::deserialize(deserializer)?;
-
-        Ok(Ucan {
-            header: parts.header,
-            payload: parts.payload,
-            signature: (),
-        })
-    }
-}
-
-impl<'a, 'de> Deserialize<'de> for SignedUcan<'a, PlaceholderStore> {
-    fn deserialize<D>(deserializer: D) -> Result<SignedUcan<'a, PlaceholderStore>, D::Error>
-    where
-        D: serde::Deserializer<'de>,
-    {
-        let s = String::deserialize(deserializer)?;
-        s.parse().map_err(serde::de::Error::custom)
+        let payload = UnsignedUcanSerializable::deserialize(deserializer)?;
+        UnsignedUcan::try_from_serializable(payload, self.store).map_err(de::Error::custom)
     }
 }
 
@@ -416,6 +416,7 @@ mod tests {
     fn test_ucan_serde() -> anyhow::Result<()> {
         // Unsigned UCAN
         let ucan = Ucan::builder()
+            .store(PlaceholderStore)
             .issuer("did:wk:m5wECtxi2kxRme2uhswu46BwzRtqvhEznWKucFrrph0I7+uo")
             .audience("did:wk:b5ua5l4wgcp46zrtn3ihjjmu5gbyhusmyt5bianl5ov2yrvj7wnh4vti")
             .expiration(UNIX_EPOCH + Duration::from_secs(3_600_000_000)) // TODO: Change to chrono date
@@ -433,35 +434,11 @@ mod tests {
             r#"{"header":null,"payload":{"ucv":"0.10.0-alpha.1","iss":"did:wk:m5wECtxi2kxRme2uhswu46BwzRtqvhEznWKucFrrph0I7+uo","aud":"did:wk:b5ua5l4wgcp46zrtn3ihjjmu5gbyhusmyt5bianl5ov2yrvj7wnh4vti","exp":3600000000,"nbf":0,"nnc":"1100263a4012","fct":{},"cap":{}}}"#
         );
 
-        let deserialized: UnsignedUcan<PlaceholderStore> = serde_json::from_str(&serialized)?;
+        let deserialized = UnsignedUcan::deserialize_with(
+            &mut serde_json::Deserializer::from_str(&serialized),
+            PlaceholderStore,
+        )?;
         assert_eq!(deserialized, ucan);
-
-        // Signed UCAN
-        let keypair = Ed25519KeyPair::from_private_key(&vec![
-            190, 244, 147, 155, 83, 151, 225, 133, 7, 166, 15, 183, 157, 168, 142, 25, 128, 4, 106,
-            34, 199, 60, 60, 9, 190, 179, 2, 196, 179, 179, 64, 134,
-        ])?;
-
-        let signed_ucan = Ucan::builder()
-            .issuer("did:wk:m5wECtxi2kxRme2uhswu46BwzRtqvhEznWKucFrrph0I7+uo")
-            .audience("did:wk:b5ua5l4wgcp46zrtn3ihjjmu5gbyhusmyt5bianl5ov2yrvj7wnh4vti")
-            .expiration(UNIX_EPOCH + Duration::from_secs(3_600_000_000)) // TODO: Change to chrono date
-            .not_before(UNIX_EPOCH)
-            .nonce("1100263a4012")
-            .facts(vec![])
-            .capabilities(caps!()?)
-            .proofs(vec![])
-            .sign(&keypair)?;
-
-        let serialized = serde_json::to_string(&signed_ucan)?;
-        tracing::debug!(?serialized);
-        assert_eq!(
-            serialized,
-            r#""eyJhbGciOiJFZERTQSIsInR5cCI6IkpXVCJ9.eyJ1Y3YiOiIwLjEwLjAtYWxwaGEuMSIsImlzcyI6ImRpZDp3azptNXdFQ3R4aTJreFJtZTJ1aHN3dTQ2Qnd6UnRxdmhFem5XS3VjRnJycGgwSTcrdW8iLCJhdWQiOiJkaWQ6d2s6YjV1YTVsNHdnY3A0NnpydG4zaWhqam11NWdieWh1c215dDViaWFubDVvdjJ5cnZqN3duaDR2dGkiLCJleHAiOjM2MDAwMDAwMDAsIm5iZiI6MCwibm5jIjoiMTEwMDI2M2E0MDEyIiwiZmN0Ijp7fSwiY2FwIjp7fX0.eSJgkvDQmAt-z9r6ceo4NpgkXZ0kddjYop4_PBRRpf1dAC9OkVpqDNgyniVxNe9hRu3ugZHMLYExM14Vkrm_Bw""#
-        );
-
-        let deserialized: SignedUcan<PlaceholderStore> = serde_json::from_str(&serialized)?;
-        assert_eq!(deserialized, signed_ucan);
 
         Ok(())
     }
@@ -475,6 +452,7 @@ mod tests {
         ])?;
 
         let signed_ucan = Ucan::builder()
+            .store(PlaceholderStore)
             .issuer("did:wk:m5wECtxi2kxRme2uhswu46BwzRtqvhEznWKucFrrph0I7+uo")
             .audience("did:wk:b5ua5l4wgcp46zrtn3ihjjmu5gbyhusmyt5bianl5ov2yrvj7wnh4vti")
             .expiration(UNIX_EPOCH + Duration::from_secs(3_600_000_000)) // TODO: Change to chrono date
@@ -497,11 +475,12 @@ mod tests {
             "eyJhbGciOiJFZERTQSIsInR5cCI6IkpXVCJ9.eyJ1Y3YiOiIwLjEwLjAtYWxwaGEuMSIsImlzcyI6ImRpZDp3azptNXdFQ3R4aTJreFJtZTJ1aHN3dTQ2Qnd6UnRxdmhFem5XS3VjRnJycGgwSTcrdW8iLCJhdWQiOiJkaWQ6d2s6YjV1YTVsNHdnY3A0NnpydG4zaWhqam11NWdieWh1c215dDViaWFubDVvdjJ5cnZqN3duaDR2dGkiLCJleHAiOjM2MDAwMDAwMDAsIm5iZiI6MCwibm5jIjoiMTEwMDI2M2E0MDEyIiwiZmN0Ijp7fSwiY2FwIjp7Inplcm9mczovL3B1YmxpYy9waG90b3MvZG9ncy8iOnsiZW50aXR5L3JlYWQiOlt7fV0sImVudGl0eS93cml0ZSI6W3t9XX19fQ.0AdFn0L_oHqxWz-0ybqy43N0Rumhp0MObGqOE-tSkqLiyunCASwuHyVrMBWes2TsdvDe4YNbaWWlVXaOEDtBBA"
         );
 
-        let decoded: SignedUcan<PlaceholderStore> = encoded.parse()?;
+        let decoded = SignedUcan::try_from_str(&encoded, PlaceholderStore)?;
         assert_eq!(decoded, signed_ucan);
 
         // Remove optional fields
         let signed_ucan = Ucan::builder()
+            .store(PlaceholderStore)
             .issuer("did:wk:m5wECtxi2kxRme2uhswu46BwzRtqvhEznWKucFrrph0I7+uo")
             .audience("did:wk:b5ua5l4wgcp46zrtn3ihjjmu5gbyhusmyt5bianl5ov2yrvj7wnh4vti")
             .expiration(None)
@@ -512,7 +491,7 @@ mod tests {
         tracing::debug!(?encoded);
         assert_eq!(encoded, "eyJhbGciOiJFZERTQSIsInR5cCI6IkpXVCJ9.eyJ1Y3YiOiIwLjEwLjAtYWxwaGEuMSIsImlzcyI6ImRpZDp3azptNXdFQ3R4aTJreFJtZTJ1aHN3dTQ2Qnd6UnRxdmhFem5XS3VjRnJycGgwSTcrdW8iLCJhdWQiOiJkaWQ6d2s6YjV1YTVsNHdnY3A0NnpydG4zaWhqam11NWdieWh1c215dDViaWFubDVvdjJ5cnZqN3duaDR2dGkiLCJleHAiOm51bGwsImNhcCI6e319.3vSKJiWMUBf_rXFOqiSG-PoGHZG63fPOqIeCoLKX0IW4cUVPxCw94k6rg6e5lKmWu27XKUt1RYQJXoA91su6BA");
 
-        let decoded: SignedUcan<PlaceholderStore> = encoded.parse()?;
+        let decoded = SignedUcan::try_from_str(&encoded, PlaceholderStore)?;
         assert_eq!(decoded, signed_ucan);
 
         Ok(())
@@ -529,6 +508,7 @@ mod tests {
         let principal_1_did = WrappedDidWebKey::from_key(&principal_1_key, base)?;
 
         let ucan = Ucan::builder()
+            .store(store.clone())
             .issuer(principal_0_did)
             .audience(principal_1_did.clone())
             .expiration(now + Duration::from_secs(720_000))
@@ -537,14 +517,12 @@ mod tests {
                     "db/read": [{}],
                 }
             }?)
-            .store(store.clone())
             .sign(&principal_0_key)?;
 
         let cid = ucan.persist().await?;
 
         let bytes = store.get_bytes(&cid).await?;
-        let stored_ucan =
-            SignedUcan::from_str(&String::from_utf8(bytes.to_vec())?)?.use_store(store);
+        let stored_ucan = SignedUcan::try_from_str(&String::from_utf8(bytes.to_vec())?, store)?;
 
         assert_eq!(ucan, stored_ucan);
 

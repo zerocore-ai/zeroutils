@@ -39,7 +39,7 @@ pub trait IpldStore: Clone {
     /// Saves an IPLD serializable object to the store and returns the `Cid` to it.
     ///
     /// This operation provides an opportunity for the store to build an internal graph of dependency.
-    fn put<T>(&self, data: T) -> impl Future<Output = StoreResult<Cid>>
+    fn put<T>(&self, data: &T) -> impl Future<Output = StoreResult<Cid>>
     where
         T: Serialize + IpldReferences;
 

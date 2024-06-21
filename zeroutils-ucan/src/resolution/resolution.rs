@@ -269,9 +269,6 @@ where
     {
         let CapabilityTuple(uri, ability, caveats) = &unresolved.tuple;
 
-        // TODO: We should check that capability tuple exists in the root capabilities definition
-        // authority.capabilities.contains(&unresolved.tuple)
-
         // Checks if the capability is present and permitted in the UCAN.
         if self
             .payload

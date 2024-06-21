@@ -18,7 +18,7 @@ pub struct PlaceholderStore;
 //--------------------------------------------------------------------------------------------------
 
 impl IpldStore for PlaceholderStore {
-    async fn put<T>(&self, _: T) -> StoreResult<Cid>
+    async fn put<T>(&self, _: &T) -> StoreResult<Cid>
     where
         T: Serialize + IpldReferences,
     {

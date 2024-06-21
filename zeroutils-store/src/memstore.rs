@@ -69,7 +69,7 @@ impl MemoryStore {
 //--------------------------------------------------------------------------------------------------
 
 impl IpldStore for MemoryStore {
-    async fn put<T>(&self, data: T) -> StoreResult<Cid>
+    async fn put<T>(&self, data: &T) -> StoreResult<Cid>
     where
         T: Serialize + IpldReferences,
     {
@@ -237,7 +237,7 @@ mod tests {
             ],
         };
 
-        let cid = store.put(data.clone()).await?;
+        let cid = store.put(&data).await?;
         let res = store.get::<fixture::Directory>(cid).await?;
         assert_eq!(res, data);
 
@@ -256,7 +256,7 @@ mod tests {
             ],
         };
 
-        let cid = store.put(data.clone()).await?;
+        let cid = store.put(&data).await?;
         let res = store.references(cid).await?;
         let expected = data.entries.iter().cloned().collect::<HashSet<_>>();
 

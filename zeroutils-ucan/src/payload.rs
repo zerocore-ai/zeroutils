@@ -1,16 +1,21 @@
 #![allow(clippy::mutable_key_type)]
 
 use std::{
+    collections::BTreeSet,
     fmt::{Debug, Display},
+    marker::PhantomData,
     str::FromStr,
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
 use base64::prelude::{Engine, BASE64_URL_SAFE_NO_PAD};
-use libipld::cid::Version;
-use serde::{Deserialize, Serialize, Serializer};
+use libipld::{cid::Version, Cid};
+use serde::{
+    de::{self, DeserializeSeed},
+    Deserialize, Deserializer, Serialize, Serializer,
+};
 use zeroutils_did_wk::WrappedDidWebKey;
-use zeroutils_store::{IpldStore, PlaceholderStore};
+use zeroutils_store::IpldStore;
 
 use crate::{Capabilities, Facts, Proofs, UcanError, UcanResult};
 
@@ -62,29 +67,34 @@ where
 // Types: Serde
 //--------------------------------------------------------------------------------------------------
 
-#[derive(Debug, Serialize, Deserialize)]
-struct UcanPayloadSerializable<'a> {
-    ucv: String,
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub(crate) struct UcanPayloadSerializable<'a> {
+    pub(crate) ucv: String,
 
-    iss: String,
+    pub(crate) iss: String,
 
-    aud: String,
+    pub(crate) aud: String,
 
-    exp: Option<u64>,
-
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    nbf: Option<u64>,
+    pub(crate) exp: Option<u64>,
 
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    nnc: Option<String>,
+    pub(crate) nbf: Option<u64>,
 
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    fct: Option<Facts>,
+    pub(crate) nnc: Option<String>,
 
-    cap: Capabilities<'a>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) fct: Option<Facts>,
 
-    #[serde(default, skip_serializing_if = "Proofs::is_empty")]
-    prf: Proofs<PlaceholderStore>,
+    pub(crate) cap: Capabilities<'a>,
+
+    #[serde(default, skip_serializing_if = "BTreeSet::is_empty")]
+    pub(crate) prf: BTreeSet<Cid>,
+}
+
+pub(crate) struct UcanPayloadDeserializeSeed<'a, S> {
+    pub(crate) store: S,
+    phantom: PhantomData<&'a ()>,
 }
 
 //--------------------------------------------------------------------------------------------------
@@ -95,24 +105,6 @@ impl<'a, S> UcanPayload<'a, S>
 where
     S: IpldStore,
 {
-    /// Changes the store for the UCAN payload.
-    pub fn use_store<T>(self, store: T) -> UcanPayload<'a, T>
-    where
-        T: IpldStore,
-    {
-        UcanPayload {
-            issuer: self.issuer,
-            audience: self.audience,
-            expiration: self.expiration,
-            not_before: self.not_before,
-            nonce: self.nonce,
-            facts: self.facts,
-            capabilities: self.capabilities,
-            proofs: self.proofs.use_store(store.clone()),
-            store,
-        }
-    }
-
     /// Returns the issuer of the UCAN.
     pub fn issuer(&self) -> &WrappedDidWebKey<'a> {
         &self.issuer
@@ -167,10 +159,10 @@ impl<'a, S> UcanPayload<'a, S>
 where
     S: IpldStore,
 {
-    /// Create a new UCAN payload with the given store.
-    pub fn with_store(string: impl AsRef<str>, store: S) -> UcanResult<UcanPayload<'static, S>> {
-        let ucan = UcanPayload::from_str(string.as_ref())?;
-        Ok(ucan.use_store(store))
+    /// Attempts to create a `UcanPayload` instance by parsing provided Base64 encoded string.
+    pub fn try_from_str(string: impl AsRef<str>, store: S) -> UcanResult<Self> {
+        let decoded = BASE64_URL_SAFE_NO_PAD.decode(string.as_ref())?;
+        Self::deserialize_with(&mut serde_json::Deserializer::from_slice(&decoded), store)
     }
 
     /// Checks if the UCAN's time bounds (`exp`, `nbf`) are valid relative to the current time (`now`).
@@ -193,63 +185,32 @@ where
 
         Ok(())
     }
-}
 
-//--------------------------------------------------------------------------------------------------
-// Trait Implementations
-//--------------------------------------------------------------------------------------------------
-
-impl<'a, S> Serialize for UcanPayload<'a, S>
-where
-    S: IpldStore,
-{
-    fn serialize<T>(&self, serializer: T) -> Result<T::Ok, T::Error>
-    where
-        T: Serializer,
-    {
-        let serde = UcanPayloadSerializable {
-            ucv: VERSION.to_string(),
-            iss: self.issuer.to_string(),
-            aud: self.audience.to_string(),
-            exp: self
-                .expiration
-                .map(|t| t.duration_since(UNIX_EPOCH).unwrap().as_secs()),
-            nbf: self
-                .not_before
-                .map(|t| t.duration_since(UNIX_EPOCH).unwrap().as_secs()),
-            nnc: self.nonce.clone(),
-            fct: self.facts.clone(),
-            cap: self.capabilities.clone(),
-            prf: self.proofs.iter().map(|prf| *prf.cid()).collect(),
-        };
-
-        serde.serialize(serializer)
+    /// Deserializes to UcanPayload using an arbitrary deserializer and store.
+    pub fn deserialize_with<'de>(
+        deserializer: impl Deserializer<'de, Error: Into<UcanError>>,
+        store: S,
+    ) -> UcanResult<Self> {
+        UcanPayloadDeserializeSeed::new(store)
+            .deserialize(deserializer)
+            .map_err(Into::into)
     }
-}
 
-impl<'a, 'de> Deserialize<'de> for UcanPayload<'a, PlaceholderStore> {
-    fn deserialize<D>(deserializer: D) -> Result<UcanPayload<'a, PlaceholderStore>, D::Error>
-    where
-        D: serde::Deserializer<'de>,
-    {
-        let payload = UcanPayloadSerializable::deserialize(deserializer)?;
-
+    pub(crate) fn try_from_serializable(
+        serializable: UcanPayloadSerializable,
+        store: S,
+    ) -> UcanResult<UcanPayload<S>> {
         // Check if the UCAN's version is supported.
-        if payload.ucv != VERSION {
-            return Err(serde::de::Error::custom(UcanError::UnsupportedVersion(
-                payload.ucv.to_owned(),
-            )));
+        if serializable.ucv != VERSION {
+            return Err(UcanError::UnsupportedVersion(serializable.ucv.to_owned()));
         }
 
         // Check if the UCAN's proofs are all canonical CIDs. Essentially, this checks that the CIDs are
         // of version `1`, hash function `SHA-256`, and codec `Raw`.
-        for prf in payload.prf.iter() {
-            let cid = prf.cid();
+        for cid in serializable.prf.iter() {
             let version = cid.version();
             if version != Version::V1 {
-                return Err(serde::de::Error::custom(UcanError::InvalidProofCidVersion(
-                    version,
-                )));
+                return Err(UcanError::InvalidProofCidVersion(version));
             }
 
             // TODO: Add back support when IpldStore supports specifying hash method.
@@ -262,41 +223,101 @@ impl<'a, 'de> Deserialize<'de> for UcanPayload<'a, PlaceholderStore> {
 
             let codec = cid.codec();
             if codec != 0x55 {
-                return Err(serde::de::Error::custom(UcanError::InvalidProofCidCodec(
-                    codec,
-                )));
+                return Err(UcanError::InvalidProofCidCodec(codec));
             }
         }
 
-        let issuer = WrappedDidWebKey::from_str(&payload.iss).map_err(serde::de::Error::custom)?;
-        let audience =
-            WrappedDidWebKey::from_str(&payload.aud).map_err(serde::de::Error::custom)?;
+        let issuer = WrappedDidWebKey::from_str(&serializable.iss).map_err(UcanError::from)?;
+        let audience = WrappedDidWebKey::from_str(&serializable.aud).map_err(UcanError::from)?;
 
         // `did:wk` with locator component not supported for issuer
         if issuer.locator_component().is_some() {
-            return Err(serde::de::Error::custom(
-                UcanError::UnsupportedDidWkLocator(issuer.to_string()),
-            ));
+            return Err(UcanError::UnsupportedDidWkLocator(issuer.to_string()));
         }
 
         // `did:wk` with locator component not supported for audience
         if audience.locator_component().is_some() {
-            return Err(serde::de::Error::custom(
-                UcanError::UnsupportedDidWkLocator(audience.to_string()),
-            ));
+            return Err(UcanError::UnsupportedDidWkLocator(audience.to_string()));
         }
 
         Ok(UcanPayload {
             issuer,
             audience,
-            expiration: payload.exp.map(|d| UNIX_EPOCH + Duration::from_secs(d)),
-            not_before: payload.nbf.map(|d| UNIX_EPOCH + Duration::from_secs(d)),
-            nonce: payload.nnc,
-            facts: payload.fct,
-            capabilities: payload.cap,
-            proofs: payload.prf,
-            store: PlaceholderStore,
+            expiration: serializable
+                .exp
+                .map(|d| UNIX_EPOCH + Duration::from_secs(d)),
+            not_before: serializable
+                .nbf
+                .map(|d| UNIX_EPOCH + Duration::from_secs(d)),
+            nonce: serializable.nnc,
+            facts: serializable.fct,
+            capabilities: serializable.cap,
+            proofs: serializable.prf.into_iter().collect(),
+            store,
         })
+    }
+}
+
+impl<'a, S> UcanPayloadDeserializeSeed<'a, S> {
+    pub(crate) fn new(store: S) -> Self {
+        Self {
+            store,
+            phantom: PhantomData,
+        }
+    }
+}
+
+//--------------------------------------------------------------------------------------------------
+// Trait Implementations
+//--------------------------------------------------------------------------------------------------
+
+impl<'a, S> From<&UcanPayload<'a, S>> for UcanPayloadSerializable<'a>
+where
+    S: IpldStore,
+{
+    fn from(value: &UcanPayload<'a, S>) -> Self {
+        UcanPayloadSerializable {
+            ucv: VERSION.to_string(),
+            iss: value.issuer.to_string(),
+            aud: value.audience.to_string(),
+            exp: value
+                .expiration
+                .map(|t| t.duration_since(UNIX_EPOCH).unwrap().as_secs()),
+            nbf: value
+                .not_before
+                .map(|t| t.duration_since(UNIX_EPOCH).unwrap().as_secs()),
+            nnc: value.nonce.clone(),
+            fct: value.facts.clone(),
+            cap: value.capabilities.clone(),
+            prf: value.proofs.iter().map(|prf| *prf.cid()).collect(),
+        }
+    }
+}
+
+impl<'a, S> Serialize for UcanPayload<'a, S>
+where
+    S: IpldStore,
+{
+    fn serialize<T>(&self, serializer: T) -> Result<T::Ok, T::Error>
+    where
+        T: Serializer,
+    {
+        UcanPayloadSerializable::from(self).serialize(serializer)
+    }
+}
+
+impl<'a, 'de, S> DeserializeSeed<'de> for UcanPayloadDeserializeSeed<'a, S>
+where
+    S: IpldStore,
+{
+    type Value = UcanPayload<'a, S>;
+
+    fn deserialize<D>(self, deserializer: D) -> Result<Self::Value, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let payload = UcanPayloadSerializable::deserialize(deserializer)?;
+        UcanPayload::try_from_serializable(payload, self.store).map_err(de::Error::custom)
     }
 }
 
@@ -308,15 +329,6 @@ where
         let json = serde_json::to_string(self).map_err(|_| std::fmt::Error)?;
         let encoded = BASE64_URL_SAFE_NO_PAD.encode(json.as_bytes());
         write!(f, "{}", encoded)
-    }
-}
-
-impl<'a> FromStr for UcanPayload<'a, PlaceholderStore> {
-    type Err = UcanError;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let decoded = BASE64_URL_SAFE_NO_PAD.decode(s.as_bytes())?;
-        serde_json::from_slice(&decoded).map_err(UcanError::from)
     }
 }
 
@@ -384,6 +396,8 @@ where
 
 #[cfg(test)]
 mod tests {
+    use zeroutils_store::PlaceholderStore;
+
     use super::*;
     use std::{str::FromStr, time::Duration};
 
@@ -420,7 +434,11 @@ mod tests {
             r#"{"ucv":"0.10.0-alpha.1","iss":"did:wk:z6MkktN9TYbYWDPFBhEEZXeD9MyZyUZ2yRNSj5BzDyLBKLkd","aud":"did:wk:m7QEI0Bnl9ShoGr1rc0+TQY64QH5hWC011zNh+CS96kg5Vw","exp":3600,"nbf":0,"nnc":"2b812184","fct":{},"cap":{}}"#,
         );
 
-        let deserialized: UcanPayload<PlaceholderStore> = serde_json::from_str(&serialized)?;
+        let deserialized = UcanPayload::deserialize_with(
+            &mut serde_json::Deserializer::from_str(&serialized),
+            PlaceholderStore,
+        )?;
+
         assert_eq!(payload, deserialized);
 
         // Remove optional fields
@@ -449,7 +467,11 @@ mod tests {
             r#"{"ucv":"0.10.0-alpha.1","iss":"did:wk:z6MkktN9TYbYWDPFBhEEZXeD9MyZyUZ2yRNSj5BzDyLBKLkd","aud":"did:wk:m7QEI0Bnl9ShoGr1rc0+TQY64QH5hWC011zNh+CS96kg5Vw","exp":null,"cap":{}}"#
         );
 
-        let deserialized: UcanPayload<PlaceholderStore> = serde_json::from_str(&serialized)?;
+        let deserialized = UcanPayload::deserialize_with(
+            &mut serde_json::Deserializer::from_str(&serialized),
+            PlaceholderStore,
+        )?;
+
         assert_eq!(payload, deserialized);
 
         Ok(())
@@ -487,7 +509,7 @@ mod tests {
             "eyJ1Y3YiOiIwLjEwLjAtYWxwaGEuMSIsImlzcyI6ImRpZDp3azp6Nk1ra3ROOVRZYllXRFBGQmhFRVpYZUQ5TXlaeVVaMnlSTlNqNUJ6RHlMQktMa2QiLCJhdWQiOiJkaWQ6d2s6bTdRRUkwQm5sOVNob0dyMXJjMCtUUVk2NFFINWhXQzAxMXpOaCtDUzk2a2c1VnciLCJleHAiOjM2MDAsIm5iZiI6MCwibm5jIjoiMmI4MTIxODQiLCJmY3QiOnt9LCJjYXAiOnt9fQ"
         );
 
-        let parsed = UcanPayload::from_str(&displayed)?;
+        let parsed = UcanPayload::try_from_str(&displayed, PlaceholderStore)?;
         assert_eq!(payload, parsed);
 
         // Remove optional fields
@@ -516,7 +538,7 @@ mod tests {
             "eyJ1Y3YiOiIwLjEwLjAtYWxwaGEuMSIsImlzcyI6ImRpZDp3azp6Nk1ra3ROOVRZYllXRFBGQmhFRVpYZUQ5TXlaeVVaMnlSTlNqNUJ6RHlMQktMa2QiLCJhdWQiOiJkaWQ6d2s6bTdRRUkwQm5sOVNob0dyMXJjMCtUUVk2NFFINWhXQzAxMXpOaCtDUzk2a2c1VnciLCJleHAiOm51bGwsImNhcCI6e319"
         );
 
-        let parsed = UcanPayload::from_str(&displayed)?;
+        let parsed = UcanPayload::try_from_str(&displayed, PlaceholderStore)?;
         assert_eq!(payload, parsed);
 
         Ok(())

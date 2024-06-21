@@ -48,23 +48,6 @@ where
         Self(BTreeMap::new())
     }
 
-    /// Changes the store used to resolve the proofs.
-    pub fn use_store<T>(self, store: T) -> Proofs<T>
-    where
-        T: IpldStore,
-    {
-        self.0
-            .into_iter()
-            .map(|(cid, mut cached)| {
-                let cached = match cached.take().map(|ucan| ucan.use_store(store.clone())) {
-                    Some(ucan) => OnceCell::from(ucan),
-                    None => OnceCell::new(),
-                };
-                (cid, cached)
-            })
-            .collect()
-    }
-
     /// Fetches the UCAN associated with the given proof CID from the store.
     pub async fn fetch_ucan<'b>(
         &'b self,
@@ -77,7 +60,7 @@ where
             .get_or_try_init(async {
                 let bytes = store.get_bytes(cid).await?;
                 let ucan_str = std::str::from_utf8(&bytes)?;
-                SignedUcan::with_store(ucan_str, store.clone())
+                SignedUcan::try_from_str(ucan_str, store.clone())
             })
             .await
     }
@@ -118,7 +101,7 @@ where
             .get_or_try_init(async {
                 let bytes = store.get_bytes(self.cid).await?;
                 let ucan_str = std::str::from_utf8(&bytes)?;
-                SignedUcan::with_store(ucan_str, store.clone())
+                SignedUcan::try_from_str(ucan_str, store.clone())
             })
             .await
     }
@@ -306,6 +289,7 @@ mod tests {
             .audience(WrappedDidWebKey::from_key(&audience_key, Base::Base64Url)?)
             .expiration(SystemTime::now() + Duration::from_secs(3_600_000))
             .capabilities(caps!()?)
+            .store(store.clone())
             .sign(&issuer_key)?;
 
         let ucan_encoded = signed_ucan.to_string();
