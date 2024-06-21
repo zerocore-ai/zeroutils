@@ -63,7 +63,7 @@ where
 //--------------------------------------------------------------------------------------------------
 
 #[derive(Debug, Serialize, Deserialize)]
-struct UcanPayloadSerde<'a> {
+struct UcanPayloadSerializable<'a> {
     ucv: String,
 
     iss: String,
@@ -207,7 +207,7 @@ where
     where
         T: Serializer,
     {
-        let serde = UcanPayloadSerde {
+        let serde = UcanPayloadSerializable {
             ucv: VERSION.to_string(),
             iss: self.issuer.to_string(),
             aud: self.audience.to_string(),
@@ -232,7 +232,7 @@ impl<'a, 'de> Deserialize<'de> for UcanPayload<'a, PlaceholderStore> {
     where
         D: serde::Deserializer<'de>,
     {
-        let payload = UcanPayloadSerde::deserialize(deserializer)?;
+        let payload = UcanPayloadSerializable::deserialize(deserializer)?;
 
         // Check if the UCAN's version is supported.
         if payload.ucv != VERSION {

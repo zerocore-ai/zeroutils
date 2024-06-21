@@ -2,7 +2,6 @@
 
 use std::{collections::HashSet, convert::Infallible, time::SystemTime};
 
-use jtd::FromSerdeSchemaError;
 use libipld::{cid::Version, Cid};
 use serde_json::Value;
 use thiserror::Error;
@@ -41,26 +40,6 @@ pub enum UcanError {
     /// Base64 decoding errors
     #[error("Base64 decoding error: {0}")]
     Base64Error(#[from] base64::DecodeError),
-
-    /// Caveats JTD error
-    #[error("Caveats JTD error: {0}")]
-    SerdeSchemaError(#[from] FromSerdeSchemaError),
-
-    /// JTD schema validation error
-    #[error("JTD validation error: {0}")]
-    JtdSchemaValidatError(#[from] jtd::SchemaValidateError),
-
-    /// JTD json validation error
-    #[error("JTD validate error: {0}")]
-    JtdValidateError(#[from] jtd::ValidateError),
-
-    /// Caveats definition validation error
-    #[error("Caveats definition validation error")]
-    CaveatsDefinitionValidationError,
-
-    /// Caveat type definition type error.
-    #[error("Caveat type definition must be of `properties` schema type, instead got: {0}")]
-    UnsupportedCaveatTypeDefinitionSchemaType(Value),
 
     /// Invalid ability
     #[error("Invalid ability: {0}")]

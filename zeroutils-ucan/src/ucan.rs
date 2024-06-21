@@ -74,14 +74,7 @@ pub type UnsignedUcan<'a, S, H = ()> = Ucan<'a, S, H, ()>;
 //--------------------------------------------------------------------------------------------------
 
 #[derive(Serialize, Deserialize)]
-struct SignedUcanSerde<'a> {
-    header: UcanHeader,
-    payload: UcanPayload<'a, PlaceholderStore>,
-    signature: UcanSignature,
-}
-
-#[derive(Serialize, Deserialize)]
-struct UnsignedUcanSerde<'a, H> {
+struct UnsignedUcanSerializable<'a, H> {
     header: H,
     payload: UcanPayload<'a, PlaceholderStore>,
 }
@@ -323,7 +316,7 @@ where
     where
         S: serde::Serializer,
     {
-        let parts = UnsignedUcanSerde {
+        let parts = UnsignedUcanSerializable {
             header: self.header.clone(),
             payload: self.payload.clone(),
         };
@@ -349,7 +342,7 @@ where
     where
         D: serde::Deserializer<'de>,
     {
-        let parts = UnsignedUcanSerde::deserialize(deserializer)?;
+        let parts = UnsignedUcanSerializable::deserialize(deserializer)?;
 
         Ok(Ucan {
             header: parts.header,
