@@ -27,17 +27,13 @@ pub type Trace = Vec<Cid>;
 
 impl<'a, S> SignedUcan<'a, S>
 where
-    S: IpldStore + Sync,
+    S: IpldStore,
 {
     /// Resolves the capabilities of a UCAN to their final form.
-    pub async fn resolve_capabilities<K>(
+    pub async fn resolve_capabilities(
         &self,
-        root_key: &K,
-        store: &S,
-    ) -> UcanResult<&ResolvedCapabilities>
-    where
-        K: GetPublicKey + Sync,
-    {
+        root_key: &impl GetPublicKey,
+    ) -> UcanResult<&ResolvedCapabilities> {
         self.resolved_capabilities
             .get_or_try_init(
                 self.resolve_capabilities_with(
@@ -53,27 +49,22 @@ where
                     ),
                     root_key,
                     vec![],
-                    store,
                 ),
             )
             .await
     }
 
     #[async_recursion(?Send)]
-    async fn resolve_capabilities_with<K>(
+    async fn resolve_capabilities_with(
         &self,
         (ucan_with_cids, ucan_with_auds, cap_with_root_iss): (
             HashSet<UnresolvedUcanWithCid>,
             HashSet<UnresolvedUcanWithAud>,
             HashSet<UnresolvedCapWithRootIss>,
         ),
-        root_key: &K,
+        root_key: &impl GetPublicKey,
         trace: Trace,
-        store: &S,
-    ) -> UcanResult<ResolvedCapabilities>
-    where
-        K: GetPublicKey + Sync,
-    {
+    ) -> UcanResult<ResolvedCapabilities> {
         // Validate the UCAN.
         self.validate()?;
 
@@ -199,7 +190,7 @@ where
                 continue;
             }
 
-            let ucan = proof.fetch_ucan(store).await?;
+            let ucan = proof.fetch_ucan(&self.payload.store).await?;
 
             self.validate_proof_constraints(ucan)?;
 
@@ -216,7 +207,6 @@ where
                     ),
                     root_key,
                     trace,
-                    store,
                 )
                 .await?;
 
@@ -261,15 +251,12 @@ where
         Ok(())
     }
 
-    fn validate_cap_with_root_iss_constraint<K>(
+    fn validate_cap_with_root_iss_constraint(
         &self,
         unresolved: &UnresolvedCapWithRootIss,
-        root_key: &K,
+        root_key: &impl GetPublicKey,
         trace: &Trace,
-    ) -> UcanResult<()>
-    where
-        K: GetPublicKey,
-    {
+    ) -> UcanResult<()> {
         let CapabilityTuple(uri, ability, caveats) = &unresolved.tuple;
 
         // Checks if the capability is present and permitted in the UCAN.

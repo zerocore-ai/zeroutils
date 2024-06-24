@@ -50,7 +50,7 @@ async fn test_ucan_resolve_capabilities() -> anyhow::Result<()> {
         .proofs([cid0])
         .sign(&p1)?;
 
-    let _ = ucan1.resolve_capabilities(&p0.clone(), &store).await?;
+    let _ = ucan1.resolve_capabilities(&p0.clone()).await?;
     let resolved = ucan1.resolved_capabilities.get().unwrap(); // Get cached.
 
     assert_eq!(resolved.len(), 1);

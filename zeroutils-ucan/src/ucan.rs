@@ -10,12 +10,12 @@ use serde::{
     Deserialize, Deserializer, Serialize,
 };
 use zeroutils_did_wk::WrappedDidWebKey;
-use zeroutils_key::{JwsAlgName, JwsAlgorithm, Sign, Verify};
+use zeroutils_key::{GetPublicKey, JwsAlgName, JwsAlgorithm, Sign, Verify};
 use zeroutils_store::{IpldStore, PlaceholderStore, Storable, StoreError, StoreResult};
 
 use crate::{
-    DefaultUcanBuilder, ResolvedCapabilities, UcanBuilder, UcanError, UcanHeader, UcanPayload,
-    UcanPayloadSerializable, UcanResult, UcanSignature,
+    DefaultUcanBuilder, ResolvedCapabilities, ResolvedCapabilityTuple, UcanBuilder, UcanError,
+    UcanHeader, UcanPayload, UcanPayloadSerializable, UcanResult, UcanSignature,
 };
 
 //--------------------------------------------------------------------------------------------------
@@ -240,6 +240,16 @@ impl<'a, S> SignedUcan<'a, S>
 where
     S: IpldStore,
 {
+    /// Resolves the capabilities to their final forms and checks if the UCAN permits the specified capability.
+    pub async fn permits(
+        &self,
+        capability: &ResolvedCapabilityTuple,
+        root_key: &impl GetPublicKey,
+    ) -> UcanResult<bool> {
+        let resolved = self.resolve_capabilities(root_key).await?;
+        Ok(resolved.permits(capability))
+    }
+
     /// Attempts to create a `SignedUcan` instance by parsing provided Base64 encoded string.
     pub fn try_from_str(string: impl AsRef<str>, store: S) -> UcanResult<Self> {
         let parts: Vec<&str> = string.as_ref().split('.').collect();

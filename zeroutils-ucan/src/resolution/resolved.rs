@@ -41,7 +41,7 @@ impl ResolvedCapabilities {
         Self(HashSet::new())
     }
 
-    /// Check if this set of capabilities permits the requested capability.
+    /// Check if this set of capabilities permits the requested capability. // TODO: Might need to optimize this.
     pub fn permits(&self, requested: &ResolvedCapabilityTuple) -> bool {
         self.0.iter().any(|c| c.permits(requested))
     }
