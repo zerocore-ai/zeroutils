@@ -3,7 +3,7 @@
     <img src="https://raw.githubusercontent.com/zerocore-ai/zeroutils/main/assets/a_logo.png" alt="zeroutils Logo" width="100"></img>
   </a> -->
 
-  <h1 align="center">zeroutils</h1>
+  <h1 align="center">zeroutils-wasi</h1>
 
   <!-- <p>
     <a href="https://crates.io/crates/zeroutils">
@@ -24,12 +24,9 @@
   </p> -->
 </div>
 
-**`zeroutils`** is a collection of projects used across the zerocore project.
+**`zeroutils-wasi`** implements some of [WASI][wasi] preview 2 specifications like `wasi:io`
 
 </br>
-
-> [!WARNING]
-> This project is in early development and is not yet ready for production use.
 
 ##
 
@@ -43,3 +40,4 @@ This project is licensed under the [Apache License 2.0](./LICENSE), or
 [http://www.apache.org/licenses/LICENSE-2.0][apache].
 
 [apache]: https://www.apache.org/licenses/LICENSE-2.0
+[wasi]: http://github.com/WebAssembly/WASI

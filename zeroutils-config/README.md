@@ -3,7 +3,7 @@
     <img src="https://raw.githubusercontent.com/zerocore-ai/zeroutils/main/assets/a_logo.png" alt="zeroutils Logo" width="100"></img>
   </a> -->
 
-  <h1 align="center">zeroutils</h1>
+  <h1 align="center">zeroutils-config</h1>
 
   <!-- <p>
     <a href="https://crates.io/crates/zeroutils">
@@ -24,12 +24,9 @@
   </p> -->
 </div>
 
-**`zeroutils`** is a collection of projects used across the zerocore project.
+**`zeroutils-config`** contains common configuration utilities used across the zerocore project.
 
 </br>
-
-> [!WARNING]
-> This project is in early development and is not yet ready for production use.
 
 ##
 

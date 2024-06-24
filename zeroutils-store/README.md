@@ -3,7 +3,7 @@
     <img src="https://raw.githubusercontent.com/zerocore-ai/zeroutils/main/assets/a_logo.png" alt="zeroutils Logo" width="100"></img>
   </a> -->
 
-  <h1 align="center">zeroutils</h1>
+  <h1 align="center">zeroutils-store</h1>
 
   <!-- <p>
     <a href="https://crates.io/crates/zeroutils">
@@ -24,18 +24,20 @@
   </p> -->
 </div>
 
-**`zeroutils`** is a collection of projects used across the zerocore project.
+**`zeroutils-store`** contains [`IpldStore`](src/ipldstore.rs) implementations for various storage backends.
 
 </br>
-
-> [!WARNING]
-> This project is in early development and is not yet ready for production use.
 
 ##
 
 ## Outline
 
+- [Acknowledgments](#acknowledgments)
 - [License](#license)
+
+## Acknowledgments
+
+This project makes use of code from the [wasmtime][wasmtime] project. The `wasmtime` project is an impactful open-source initiative that enables us to achieve our goals more efficiently by leveraging their robust WebAssembly runtime implementation.
 
 ## License
 
@@ -43,3 +45,4 @@ This project is licensed under the [Apache License 2.0](./LICENSE), or
 [http://www.apache.org/licenses/LICENSE-2.0][apache].
 
 [apache]: https://www.apache.org/licenses/LICENSE-2.0
+[wasmtime]: https://github.com/bytecodealliance/wasmtime

@@ -29,7 +29,7 @@ pub const LRU_STORE_BLOCK_SIZE: usize = 256 * 1024; // 256 KiB
 /// capacity is reached.
 #[derive(Clone)]
 pub struct LruStore {
-    blocks: Arc<RwLock<LruCache<Cid, Bytes>>>,
+    blocks: Arc<RwLock<LruCache<Cid, Bytes>>>, // TODO: Arc<RwLock<LruCache<Cid, (Bytes, std::cell::OnceCell<T>)>>>
 }
 
 //--------------------------------------------------------------------------------------------------
@@ -191,7 +191,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_memory_store_put_and_get() -> anyhow::Result<()> {
+    async fn test_lru_store_put_and_get() -> anyhow::Result<()> {
         let store = LruStore::new(2);
 
         //================== Raw ==================
@@ -231,7 +231,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_memory_store_get_references() -> anyhow::Result<()> {
+    async fn test_lru_store_get_references() -> anyhow::Result<()> {
         let store = LruStore::new(2);
 
         let data = fixture::Directory {

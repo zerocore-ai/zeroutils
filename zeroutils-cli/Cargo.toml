@@ -5,6 +5,7 @@ license.workspace = true
 repository.workspace = true
 authors.workspace = true
 edition.workspace = true
+readme = "README.md"
 
 [dependencies]
 clap = "4.5.7"
