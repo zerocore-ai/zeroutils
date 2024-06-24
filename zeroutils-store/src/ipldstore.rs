@@ -119,7 +119,7 @@ macro_rules! impl_ipld_references {
     ($type:ty) => {
         impl IpldReferences for $type {
             fn references<'a>(&'a self) -> Box<dyn Iterator<Item = &'a Cid> + 'a> {
-                Box::new([].iter())
+                Box::new(std::iter::empty())
             }
         }
     }

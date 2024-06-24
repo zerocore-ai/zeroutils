@@ -3,6 +3,7 @@ use std::{
     marker::PhantomData,
 };
 
+use async_once_cell::OnceCell;
 use libipld::Cid;
 use serde::{
     de::{self, DeserializeSeed},
@@ -13,8 +14,8 @@ use zeroutils_key::{JwsAlgName, JwsAlgorithm, Sign, Verify};
 use zeroutils_store::{IpldStore, PlaceholderStore, Storable, StoreError, StoreResult};
 
 use crate::{
-    DefaultUcanBuilder, UcanBuilder, UcanError, UcanHeader, UcanPayload, UcanPayloadSerializable,
-    UcanResult, UcanSignature,
+    DefaultUcanBuilder, ResolvedCapabilities, UcanBuilder, UcanError, UcanHeader, UcanPayload,
+    UcanPayloadSerializable, UcanResult, UcanSignature,
 };
 
 //--------------------------------------------------------------------------------------------------
@@ -30,8 +31,7 @@ use crate::{
 /// NOTE: This implementation currently only supports the `did:wk` DID method.
 ///
 /// [ucan]: https://github.com/ucan-wg/spec
-#[derive(Clone)]
-pub struct Ucan<'a, S, H = (), V = ()>
+pub struct Ucan<'a, S, H = (), V = (), R = ()>
 where
     S: IpldStore,
 {
@@ -43,8 +43,9 @@ where
 
     /// The signature of the UCAN, proving its authenticity.
     pub(crate) signature: V,
-    // /// Cached capabilities for the UCAN.
-    // resolved_capabilities: OnceCell<CapabilitiesDefinition<'a>>,
+
+    /// Cached resolved capabilities for the UCAN.
+    pub(crate) resolved_capabilities: R,
 }
 
 /// Represents a signed [UCAN (User-Controlled Authorization Network)][ucan] token with a header and signature.
@@ -58,7 +59,10 @@ where
 /// This implementation currently only supports the `did:wk` DID method.
 ///
 /// [ucan]: https://github.com/ucan-wg/spec
-pub type SignedUcan<'a, S> = Ucan<'a, S, UcanHeader, UcanSignature>;
+pub type SignedUcan<'a, S> = Ucan<'a, S, UcanHeader, UcanSignature, CachedResolvedCapabilities>;
+
+/// Represents a cached resolved capabilities for a signed UCAN.
+pub type CachedResolvedCapabilities = OnceCell<ResolvedCapabilities>;
 
 /// Represents an unsigned [UCAN (User-Controlled Authorization Network)][ucan] token without a signature.
 ///
@@ -71,7 +75,7 @@ pub type SignedUcan<'a, S> = Ucan<'a, S, UcanHeader, UcanSignature>;
 /// This implementation currently only supports the `did:wk` DID method.
 ///
 /// [ucan]: https://github.com/ucan-wg/spec
-pub type UnsignedUcan<'a, S, H = ()> = Ucan<'a, S, H, ()>;
+pub type UnsignedUcan<'a, S, H = ()> = Ucan<'a, S, H>;
 
 //--------------------------------------------------------------------------------------------------
 // Types: Serializable
@@ -108,7 +112,7 @@ impl Ucan<'_, PlaceholderStore> {
     }
 }
 
-impl<'a, S, H, V> Ucan<'a, S, H, V>
+impl<'a, S, H, V, R> Ucan<'a, S, H, V, R>
 where
     S: IpldStore,
 {
@@ -126,6 +130,11 @@ where
     pub fn signature(&self) -> &V {
         &self.signature
     }
+
+    /// Checks if the UCAN is addressed to the specified DID.
+    pub fn addressed_to(&self, did: &WrappedDidWebKey) -> bool {
+        self.payload.audience() == did
+    }
 }
 
 impl<'a, S, H, V> Ucan<'a, S, H, V>
@@ -138,6 +147,7 @@ where
             header,
             payload,
             signature: signature.into(),
+            resolved_capabilities: (),
         }
     }
 
@@ -147,12 +157,8 @@ where
             header: alg.into(),
             payload: self.payload,
             signature: self.signature,
+            resolved_capabilities: self.resolved_capabilities,
         }
-    }
-
-    /// Checks if the UCAN is addressed to the specified DID.
-    pub fn addressed_to(&self, did: &WrappedDidWebKey) -> bool {
-        self.payload.audience() == did
     }
 }
 
@@ -173,6 +179,7 @@ where
             payload: ucan.payload,
             header: ucan.header,
             signature: signature.into(),
+            resolved_capabilities: OnceCell::new(),
         })
     }
 
@@ -200,6 +207,7 @@ where
             header: ucan.header,
             payload,
             signature: (),
+            resolved_capabilities: (),
         })
     }
 }
@@ -223,6 +231,7 @@ where
             header,
             payload,
             signature: (),
+            resolved_capabilities: (),
         })
     }
 }
@@ -247,6 +256,7 @@ where
             header,
             payload,
             signature,
+            resolved_capabilities: OnceCell::new(),
         })
     }
 
@@ -376,17 +386,52 @@ where
     }
 }
 
-impl<'a, S, H, V> Debug for Ucan<'a, S, H, V>
+impl<'a, S, H, V, R> Debug for Ucan<'a, S, H, V, R>
 where
     S: IpldStore,
     H: Debug,
     V: Debug,
+    R: Debug,
 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Ucan")
             .field("header", &self.header)
             .field("payload", &self.payload)
+            .field("signature", &self.signature)
+            .field("resolved_capabilities", &self.resolved_capabilities)
             .finish()
+    }
+}
+
+impl<'a, S, H, V> Clone for Ucan<'a, S, H, V>
+where
+    S: IpldStore + Clone,
+    H: Clone,
+    V: Clone,
+{
+    fn clone(&self) -> Self {
+        Self {
+            header: self.header.clone(),
+            payload: self.payload.clone(),
+            signature: self.signature.clone(),
+            resolved_capabilities: (),
+        }
+    }
+}
+
+impl<'a, S, H, V> Clone for Ucan<'a, S, H, V, OnceCell<ResolvedCapabilities>>
+where
+    S: IpldStore + Clone,
+    H: Clone,
+    V: Clone,
+{
+    fn clone(&self) -> Self {
+        Self {
+            header: self.header.clone(),
+            payload: self.payload.clone(),
+            signature: self.signature.clone(),
+            resolved_capabilities: OnceCell::new(),
+        }
     }
 }
 

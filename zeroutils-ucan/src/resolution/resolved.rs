@@ -2,6 +2,7 @@ use std::{
     collections::HashSet,
     fmt::{self, Display},
     ops::{Deref, DerefMut},
+    str::FromStr,
 };
 
 use zeroutils_did_wk::WrappedDidWebKey;
@@ -100,6 +101,14 @@ impl Display for ResolvedResource {
             ResolvedResource::NonUcan(uri) => write!(f, "{}", uri),
             ResolvedResource::UcanAllTransient(did) => write!(f, "ucan:* ({})", did),
         }
+    }
+}
+
+impl FromStr for ResolvedResource {
+    type Err = anyhow::Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Ok(ResolvedResource::NonUcan(NonUcanUri::from_str(s)?))
     }
 }
 

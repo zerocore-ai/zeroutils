@@ -62,6 +62,14 @@ impl MemoryStore {
 
         to_remove
     }
+
+    /// Prints all the blocks in the store.
+    pub async fn print(&self) {
+        let blocks = self.blocks.read().await;
+        for (cid, (size, bytes)) in blocks.iter() {
+            println!("\ncid: {} ({})\nkey: {}", cid, size, hex::encode(bytes));
+        }
+    }
 }
 
 //--------------------------------------------------------------------------------------------------

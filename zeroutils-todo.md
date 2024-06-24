@@ -6,3 +6,7 @@
 
 - [ ] Change project to `zeroutils-did`
 - [ ] Support `did:key` method
+
+# zeroutils-ucan
+
+- [ ] Change from `SystemTime` to `chrono`

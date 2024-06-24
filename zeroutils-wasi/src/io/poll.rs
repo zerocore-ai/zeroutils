@@ -51,7 +51,7 @@ pub trait Subscribe: Send + Sync + 'static {
     where
         Self: Sized,
     {
-        // Create a pollable resource that can be waitezd on.
+        // Create a pollable resource that can be waited on.
         let pollable = PollableHandle {
             resource_index: resource.rep(),
             block_future: |resource| {

@@ -5,7 +5,7 @@ use zeroutils_did_wk::{Base, WrappedDidWebKey};
 use zeroutils_key::{Ed25519KeyPair, KeyPairGenerate};
 use zeroutils_store::{IpldStore, MemoryStore};
 
-use crate::{caps, Ucan};
+use crate::{caps, Caveats, ResolvedCapabilityTuple, Ucan};
 
 //--------------------------------------------------------------------------------------------------
 // Tests
@@ -50,11 +50,15 @@ async fn test_ucan_resolve_capabilities() -> anyhow::Result<()> {
         .proofs([cid0])
         .sign(&p1)?;
 
-    let resolved = ucan1.resolve_capabilities(&p0.clone(), &store).await?;
+    let _ = ucan1.resolve_capabilities(&p0.clone(), &store).await?;
+    let resolved = ucan1.resolved_capabilities.get().unwrap(); // Get cached.
 
-    resolved.iter().for_each(|r| {
-        println!("resolved: {}", r);
-    });
+    assert_eq!(resolved.len(), 1);
+    assert!(resolved.permits(&ResolvedCapabilityTuple(
+        "zerodb://".parse()?,
+        "db/table/read".parse()?,
+        Caveats::any(),
+    )));
 
     Ok(())
 }

@@ -34,26 +34,29 @@ where
         &self,
         root_key: &K,
         store: &S,
-    ) -> UcanResult<ResolvedCapabilities>
+    ) -> UcanResult<&ResolvedCapabilities>
     where
         K: GetPublicKey + Sync,
     {
-        self.resolve_capabilities_with(
-            (
-                [
-                    // This is needed to ensure that the entry UCAN is mapped.
-                    UnresolvedUcanWithCid { cid: None },
-                ]
-                .into_iter()
-                .collect(),
-                HashSet::new(),
-                HashSet::new(),
-            ),
-            root_key,
-            vec![],
-            store,
-        )
-        .await
+        self.resolved_capabilities
+            .get_or_try_init(
+                self.resolve_capabilities_with(
+                    (
+                        [
+                            // This is needed to ensure that the entry UCAN is mapped.
+                            UnresolvedUcanWithCid { cid: None },
+                        ]
+                        .into_iter()
+                        .collect(),
+                        HashSet::new(),
+                        HashSet::new(),
+                    ),
+                    root_key,
+                    vec![],
+                    store,
+                ),
+            )
+            .await
     }
 
     #[async_recursion(?Send)]

@@ -186,7 +186,7 @@ where
         Ok(())
     }
 
-    /// Deserializes to UcanPayload using an arbitrary deserializer and store.
+    /// Deserializes to a 'UcanPayload' using an arbitrary deserializer and store.
     pub fn deserialize_with<'de>(
         deserializer: impl Deserializer<'de, Error: Into<UcanError>>,
         store: S,
