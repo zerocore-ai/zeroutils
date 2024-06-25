@@ -243,7 +243,7 @@ where
     /// Resolves the capabilities to their final forms and checks if the UCAN permits the specified capability.
     pub async fn permits(
         &self,
-        capability: &ResolvedCapabilityTuple,
+        capability: impl Into<ResolvedCapabilityTuple>,
         root_key: &impl GetPublicKey,
     ) -> UcanResult<bool> {
         let resolved = self.resolve_capabilities(root_key).await?;

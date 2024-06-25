@@ -51,7 +51,7 @@ pub trait KeyPairGenerate {
 /// A trait for getting the public key of a key pair.
 pub trait GetPublicKey {
     /// The type of the owned public key.
-    type OwnedPublicKey: PublicKeyBytes + Verify + 'static;
+    type OwnedPublicKey: GetPublicKey + PublicKeyBytes + Verify + 'static;
 
     /// The type of the public key.
     type PublicKey<'b>: IntoOwned<Owned = Self::OwnedPublicKey> + PublicKeyBytes + Verify

@@ -24,6 +24,7 @@
 #![warn(missing_docs)]
 #![allow(clippy::module_inception)]
 
+mod auth;
 mod builder;
 mod capabilities;
 mod error;
@@ -42,6 +43,7 @@ mod uri;
 
 pub mod testgen;
 
+pub use auth::*;
 pub use builder::*;
 pub use capabilities::*;
 pub use error::*;

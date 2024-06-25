@@ -42,8 +42,9 @@ impl ResolvedCapabilities {
     }
 
     /// Check if this set of capabilities permits the requested capability. // TODO: Might need to optimize this.
-    pub fn permits(&self, requested: &ResolvedCapabilityTuple) -> bool {
-        self.0.iter().any(|c| c.permits(requested))
+    pub fn permits(&self, requested: impl Into<ResolvedCapabilityTuple>) -> bool {
+        let requested = requested.into();
+        self.0.iter().any(|c| c.permits(&requested))
     }
 }
 
@@ -85,6 +86,18 @@ impl ResolvedResource {
 
 impl From<CapabilityTuple> for ResolvedCapabilityTuple {
     fn from(CapabilityTuple(resource, ability, caveats): CapabilityTuple) -> Self {
+        Self(ResolvedResource::NonUcan(resource), ability, caveats)
+    }
+}
+
+impl From<(ResolvedResource, Ability, Caveats)> for ResolvedCapabilityTuple {
+    fn from((resource, ability, caveats): (ResolvedResource, Ability, Caveats)) -> Self {
+        Self(resource, ability, caveats)
+    }
+}
+
+impl From<(NonUcanUri, Ability, Caveats)> for ResolvedCapabilityTuple {
+    fn from((resource, ability, caveats): (NonUcanUri, Ability, Caveats)) -> Self {
         Self(ResolvedResource::NonUcan(resource), ability, caveats)
     }
 }

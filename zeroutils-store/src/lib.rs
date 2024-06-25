@@ -5,11 +5,12 @@
 
 mod dualstore;
 mod error;
-mod ipldstore;
 mod lrustore;
 mod memstore;
 mod plcstore;
+mod references;
 mod storable;
+mod store;
 pub(crate) mod utils;
 
 //--------------------------------------------------------------------------------------------------
@@ -18,11 +19,12 @@ pub(crate) mod utils;
 
 pub use dualstore::*;
 pub use error::*;
-pub use ipldstore::*;
 pub use lrustore::*;
 pub use memstore::*;
 pub use plcstore::*;
+pub use references::*;
 pub use storable::*;
+pub use store::*;
 
 //--------------------------------------------------------------------------------------------------
 // Re-Exports

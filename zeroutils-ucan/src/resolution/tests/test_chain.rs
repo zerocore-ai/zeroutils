@@ -1,11 +1,14 @@
-use std::time::{Duration, SystemTime};
+use std::{
+    str::FromStr,
+    time::{Duration, SystemTime},
+};
 
 use rand::thread_rng;
 use zeroutils_did_wk::{Base, WrappedDidWebKey};
 use zeroutils_key::{Ed25519KeyPair, KeyPairGenerate};
 use zeroutils_store::{IpldStore, MemoryStore};
 
-use crate::{caps, Caveats, ResolvedCapabilityTuple, Ucan};
+use crate::{caps, Ability, Caveats, ResolvedResource, Ucan};
 
 //--------------------------------------------------------------------------------------------------
 // Tests
@@ -54,9 +57,9 @@ async fn test_ucan_resolve_capabilities() -> anyhow::Result<()> {
     let resolved = ucan1.resolved_capabilities.get().unwrap(); // Get cached.
 
     assert_eq!(resolved.len(), 1);
-    assert!(resolved.permits(&ResolvedCapabilityTuple(
-        "zerodb://".parse()?,
-        "db/table/read".parse()?,
+    assert!(resolved.permits((
+        ResolvedResource::from_str("zerodb://")?,
+        Ability::from_str("db/table/read")?,
         Caveats::any(),
     )));
 
