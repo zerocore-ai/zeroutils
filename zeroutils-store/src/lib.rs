@@ -3,11 +3,8 @@
 #![warn(missing_docs)]
 #![allow(clippy::module_inception)]
 
-mod dualstore;
 mod error;
-mod lrustore;
-mod memstore;
-mod plcstore;
+mod impls;
 mod references;
 mod storable;
 mod store;
@@ -17,11 +14,8 @@ pub(crate) mod utils;
 // Exports
 //--------------------------------------------------------------------------------------------------
 
-pub use dualstore::*;
 pub use error::*;
-pub use lrustore::*;
-pub use memstore::*;
-pub use plcstore::*;
+pub use impls::*;
 pub use references::*;
 pub use storable::*;
 pub use store::*;
