@@ -38,7 +38,11 @@ pub struct PollableHandle {
 /// Allows a resource to be waited on.
 #[async_trait]
 pub trait Subscribe: Send + Sync + 'static {
-    /// Waits for the resource to be ready.
+    /// **Waits** for the resource to be ready.
+    ///
+    /// Although the name says "block", this only refers to the wasm execution context. We don't
+    /// actually want the host runtime thread to block. This is why it is an async function so that
+    /// it can be spawned on a separate blocking thread.
     async fn block(&self);
 
     /// Derives a pollable resource that can be waited on from `resource`.

@@ -1,7 +1,9 @@
-use std::collections::HashSet;
+use std::{collections::HashSet, pin::Pin};
 
+use bytes::Bytes;
 use libipld::Cid;
 use serde::Serialize;
+use tokio::io::AsyncRead;
 
 use crate::{Codec, IpldReferences, IpldStore, StoreResult};
 
@@ -18,33 +20,52 @@ pub struct PlaceholderStore;
 //--------------------------------------------------------------------------------------------------
 
 impl IpldStore for PlaceholderStore {
-    async fn put<T>(&self, _: &T) -> StoreResult<Cid>
+    async fn put_node<T>(&self, _: &T) -> StoreResult<Cid>
     where
         T: Serialize + IpldReferences,
     {
         unimplemented!("placeholder")
     }
 
-    async fn put_bytes(&self, _: impl Into<bytes::Bytes>) -> StoreResult<Cid> {
+    async fn put_bytes(&self, _: impl AsyncRead) -> StoreResult<Cid> {
         unimplemented!("placeholder")
     }
 
-    async fn get<D>(&self, _: impl Into<Cid>) -> StoreResult<D>
+    async fn put_raw_block(&self, _: impl Into<Bytes> + Send) -> StoreResult<Cid> {
+        unimplemented!("placeholder")
+    }
+
+    async fn get_node<D>(&self, _: &Cid) -> StoreResult<D>
     where
         D: serde::de::DeserializeOwned,
     {
         unimplemented!("placeholder")
     }
 
-    async fn get_bytes(&self, _: impl Into<Cid>) -> StoreResult<bytes::Bytes> {
+    async fn get_bytes<'a>(
+        &'a self,
+        _: &'a Cid,
+    ) -> StoreResult<Pin<Box<dyn AsyncRead + Send + 'a>>> {
         unimplemented!("placeholder")
     }
 
-    async fn references(&self, _: impl Into<Cid>) -> StoreResult<HashSet<Cid>> {
+    async fn get_raw_block(&self, _: &Cid) -> StoreResult<Bytes> {
+        unimplemented!("placeholder")
+    }
+
+    async fn has(&self, _: &Cid) -> bool {
         unimplemented!("placeholder")
     }
 
     fn supported_codecs(&self) -> HashSet<Codec> {
+        unimplemented!("placeholder")
+    }
+
+    fn node_block_max_size(&self) -> Option<u64> {
+        unimplemented!("placeholder")
+    }
+
+    fn raw_block_max_size(&self) -> Option<u64> {
         unimplemented!("placeholder")
     }
 }

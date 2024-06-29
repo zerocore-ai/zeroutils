@@ -6,7 +6,7 @@ use std::{
 use async_once_cell::OnceCell;
 use libipld::Cid;
 use serde::{Deserialize, Serialize};
-use zeroutils_store::{IpldStore, PlaceholderStore};
+use zeroutils_store::{IpldStore, IpldStoreExt, PlaceholderStore};
 
 use crate::{SignedUcan, UcanError, UcanResult};
 
@@ -58,7 +58,7 @@ where
             .get(cid)
             .ok_or(UcanError::ProofCidNotFound(*cid))?
             .get_or_try_init(async {
-                let bytes = store.get_bytes(cid).await?;
+                let bytes = store.read_all_bytes(cid).await?;
                 let ucan_str = std::str::from_utf8(&bytes)?;
                 SignedUcan::try_from_str(ucan_str, store.clone())
             })
@@ -99,7 +99,7 @@ where
     pub async fn fetch_ucan<'b>(&'b self, store: &'b S) -> UcanResult<&'b SignedUcan<S>> {
         self.cache
             .get_or_try_init(async {
-                let bytes = store.get_bytes(self.cid).await?;
+                let bytes = store.read_all_bytes(&self.cid).await?;
                 let ucan_str = std::str::from_utf8(&bytes)?;
                 SignedUcan::try_from_str(ucan_str, store.clone())
             })
@@ -293,7 +293,7 @@ mod tests {
             .sign(&issuer_key)?;
 
         let ucan_encoded = signed_ucan.to_string();
-        let cid = store.put_bytes(ucan_encoded).await?;
+        let cid = store.put_bytes(ucan_encoded.as_bytes()).await?;
 
         let proofs_0 = Proofs::from_iter(vec![cid]);
         let proofs_1 = Proofs::from_iter(vec![(cid, OnceCell::from(signed_ucan))]);

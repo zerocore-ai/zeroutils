@@ -10,3 +10,9 @@
 # zeroutils-ucan
 
 - [ ] Change from `SystemTime` to `chrono`
+
+# zeroutils-ucan
+
+- [ ] Consider `LtHash` in merkle dag for a more canonical root CID.
+  - [ ] https://github.com/lukechampine/lthash
+  - [ ] https://engineering.fb.com/2019/03/01/security/homomorphic-hashing/

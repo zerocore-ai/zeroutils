@@ -11,7 +11,9 @@ use serde::{
 };
 use zeroutils_did_wk::WrappedDidWebKey;
 use zeroutils_key::{GetPublicKey, JwsAlgName, JwsAlgorithm, Sign, Verify};
-use zeroutils_store::{IpldStore, PlaceholderStore, Storable, StoreError, StoreResult};
+use zeroutils_store::{
+    IpldStore, IpldStoreExt, PlaceholderStore, Storable, StoreError, StoreResult,
+};
 
 use crate::{
     DefaultUcanBuilder, ResolvedCapabilities, ResolvedCapabilityTuple, UcanBuilder, UcanError,
@@ -450,12 +452,13 @@ where
     S: IpldStore,
 {
     async fn store(&self) -> StoreResult<Cid> {
-        self.payload.store.put_bytes(self.to_string()).await
+        let encoded = self.to_string();
+        self.payload.store.put_bytes(encoded.as_bytes()).await
     }
 
     async fn load(cid: &Cid, store: S) -> StoreResult<Self> {
-        let encoded = store.get_bytes(cid).await?;
-        let encoded = String::from_utf8(encoded.to_vec()).map_err(StoreError::custom)?;
+        let bytes = store.read_all_bytes(cid).await?;
+        let encoded = std::str::from_utf8(&bytes).map_err(StoreError::custom)?;
         SignedUcan::try_from_str(encoded, store).map_err(StoreError::custom)
     }
 }

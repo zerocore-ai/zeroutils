@@ -1,11 +1,11 @@
-mod chunkers;
-mod layouts;
-mod stores;
+mod dualstore;
+mod memstore;
+mod plcstore;
 
 //--------------------------------------------------------------------------------------------------
 // Exports
 //--------------------------------------------------------------------------------------------------
 
-pub use chunkers::*;
-pub use layouts::*;
-pub use stores::*;
+pub use dualstore::*;
+pub use memstore::*;
+pub use plcstore::*;

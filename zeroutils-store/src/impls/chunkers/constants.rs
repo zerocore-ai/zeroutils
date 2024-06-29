@@ -1,11 +1,6 @@
-mod chunkers;
-mod layouts;
-mod stores;
-
 //--------------------------------------------------------------------------------------------------
-// Exports
+// Constants
 //--------------------------------------------------------------------------------------------------
 
-pub use chunkers::*;
-pub use layouts::*;
-pub use stores::*;
+/// The default chunk size is 512 KiB.
+pub const DEFAULT_CHUNK_MAX_SIZE: u64 = 512 * 1024;

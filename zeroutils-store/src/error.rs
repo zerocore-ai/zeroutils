@@ -3,6 +3,8 @@ use std::{error::Error, fmt::Display};
 use libipld::Cid;
 use thiserror::Error;
 
+use crate::Codec;
+
 //--------------------------------------------------------------------------------------------------
 // Types
 //--------------------------------------------------------------------------------------------------
@@ -17,9 +19,21 @@ pub enum StoreError {
     #[error("Block not found: {0}")]
     BlockNotFound(Cid),
 
+    /// The node block is too large.
+    #[error("Node block too large: {0} > {1}")]
+    NodeBlockTooLarge(u64, u64),
+
+    /// The raw block is too large.
+    #[error("Raw block too large: {0} > {1}")]
+    RawBlockTooLarge(u64, u64),
+
     /// Codec not supported.
     #[error("Unsupported Codec: {0}")]
     UnsupportedCodec(u64),
+
+    /// Expected block codec does not match the actual codec.
+    #[error("Unexpected block codec: expected: {0:?} got: {1:?}")]
+    UnexpectedBlockCodec(Codec, Codec),
 
     /// Custom error.
     #[error("Custom error: {0}")]

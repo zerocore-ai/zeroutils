@@ -1,11 +1,11 @@
-mod chunkers;
-mod layouts;
-mod stores;
+mod balanced;
+mod flat;
+mod trickle;
 
 //--------------------------------------------------------------------------------------------------
 // Exports
 //--------------------------------------------------------------------------------------------------
 
-pub use chunkers::*;
-pub use layouts::*;
-pub use stores::*;
+pub use balanced::*;
+pub use flat::*;
+pub use trickle::*;

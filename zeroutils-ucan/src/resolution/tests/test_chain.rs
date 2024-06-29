@@ -6,7 +6,7 @@ use std::{
 use rand::thread_rng;
 use zeroutils_did_wk::{Base, WrappedDidWebKey};
 use zeroutils_key::{Ed25519KeyPair, KeyPairGenerate};
-use zeroutils_store::{IpldStore, MemoryStore};
+use zeroutils_store::{MemoryStore, Storable};
 
 use crate::{caps, Ability, Caveats, ResolvedResource, Ucan};
 
@@ -39,7 +39,7 @@ async fn test_ucan_resolve_capabilities() -> anyhow::Result<()> {
         .proofs([])
         .sign(&p0)?;
 
-    let cid0 = store.put_bytes(ucan0.to_string()).await?;
+    let cid0 = ucan0.store().await?;
 
     let ucan1 = Ucan::builder()
         .issuer(p1_did)

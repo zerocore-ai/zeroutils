@@ -1,11 +1,11 @@
-mod chunkers;
-mod layouts;
-mod stores;
+mod constants;
+mod fixed;
+mod rabin;
 
 //--------------------------------------------------------------------------------------------------
 // Exports
 //--------------------------------------------------------------------------------------------------
 
-pub use chunkers::*;
-pub use layouts::*;
-pub use stores::*;
+pub use constants::*;
+pub use fixed::*;
+pub use rabin::*;

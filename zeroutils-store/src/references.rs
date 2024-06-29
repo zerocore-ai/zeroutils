@@ -12,7 +12,7 @@ use libipld::Cid;
 /// [cid]: https://docs.ipfs.tech/concepts/content-addressing/
 pub trait IpldReferences {
     /// Returns all the direct CID references the type has to other data.
-    fn references<'a>(&'a self) -> Box<dyn Iterator<Item = &'a Cid> + 'a>;
+    fn references<'a>(&'a self) -> Box<dyn Iterator<Item = &'a Cid> + Send + 'a>;
 }
 
 //--------------------------------------------------------------------------------------------------
@@ -25,7 +25,7 @@ macro_rules! impl_ipld_references {
         where
             $($name: IpldReferences,)*
         {
-            fn references<'a>(&'a self) -> Box<dyn Iterator<Item = &'a Cid> + 'a> {
+            fn references<'a>(&'a self) -> Box<dyn Iterator<Item = &'a Cid> + Send + 'a> {
                 #[allow(non_snake_case)]
                 let ($($name,)+) = self;
                 Box::new(
@@ -37,7 +37,7 @@ macro_rules! impl_ipld_references {
     };
     ($type:ty) => {
         impl IpldReferences for $type {
-            fn references<'a>(&'a self) -> Box<dyn Iterator<Item = &'a Cid> + 'a> {
+            fn references<'a>(&'a self) -> Box<dyn Iterator<Item = &'a Cid> + Send + 'a> {
                 Box::new(std::iter::empty())
             }
         }
@@ -88,7 +88,7 @@ impl<T> IpldReferences for Option<T>
 where
     T: IpldReferences,
 {
-    fn references<'a>(&'a self) -> Box<dyn Iterator<Item = &'a Cid> + 'a> {
+    fn references<'a>(&'a self) -> Box<dyn Iterator<Item = &'a Cid> + Send + 'a> {
         match self {
             Some(value) => Box::new(value.references()),
             None => Box::new(iter::empty()),

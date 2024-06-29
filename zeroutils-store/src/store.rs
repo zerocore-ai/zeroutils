@@ -1,8 +1,9 @@
-use std::{collections::HashSet, future::Future};
+use std::{collections::HashSet, future::Future, pin::Pin};
 
 use bytes::Bytes;
 use libipld::Cid;
 use serde::{de::DeserializeOwned, Serialize};
+use tokio::io::{AsyncRead, AsyncReadExt};
 
 use crate::{IpldReferences, StoreError};
 
@@ -15,20 +16,16 @@ use super::StoreResult;
 /// `IpldStore` is a content-addressable store for [`IPLD` (InterPlanetary Linked Data)][ipld] that
 /// emphasizes the structured nature of the data it stores.
 ///
-/// It can store raw bytes of data, but more importantly, it stores structured IPLDs; making it responsible for
-/// encoding and decoding them. This gives the store a chance to construct a dependency graph at insertion time.
-///
-/// The key used to identify a stored data is known as a [`Cid` (Content Identifier)][cid] which is basically a hash of the
-/// encoded IPLD or raw bytes. This means stored data with the same bytes will always have the same key. This makes the
-/// store ideal for deduplication of data and ensuring data integrity.
+/// It can store raw bytes of data and structured data stored as IPLD. Stored data can be fetched
+/// by their [`CID`s (Content Identifier)][cid] which is represents the fingerprint of the data.
 ///
 /// ## Important
 ///
-/// The trait is designed for cheap clones, therefore it is recommended to implement `Clone` with inexpensive cloning
-/// semantics.
+/// It is highly recommended to implement `Clone` with inexpensive cloning semantics. This is because
+/// `IpldStore`s are usually passed around a lot and cloned to be used in different parts of the
+/// application.
 ///
-/// An implementation is responsible for how it encodes types and how encoded IPLD data is broken down into smaller blocks
-/// when it exceeds a certain pre-determined size.
+/// An implementation is responsible for how it stores, encodes and chunks data into blocks.
 ///
 /// [cid]: https://docs.ipfs.tech/concepts/content-addressing/
 /// [ipld]: https://ipld.io/
@@ -38,38 +35,95 @@ use super::StoreResult;
 pub trait IpldStore: Clone {
     /// Saves an IPLD serializable object to the store and returns the `Cid` to it.
     ///
-    /// This operation provides an opportunity for the store to build an internal graph of dependency.
-    fn put<T>(&self, data: &T) -> impl Future<Output = StoreResult<Cid>>
-    where
-        T: Serialize + IpldReferences;
-
-    /// Saves raw bytes  to the store and returns the `Cid` to it.
+    /// # Errors
     ///
-    /// This operation provides an opportunity for the store to build an internal graph of dependency.
-    fn put_bytes(&self, bytes: impl Into<Bytes>) -> impl Future<Output = StoreResult<Cid>>;
+    /// If the serialized data is too large, `StoreError::NodeBlockTooLarge` is returned.
+    fn put_node<T>(&self, data: &T) -> impl Future<Output = StoreResult<Cid>> + Send
+    where
+        T: Serialize + IpldReferences + Sync;
+
+    /// Takes a reader of raw bytes, saves it to the store and returns the `Cid` to it.
+    ///
+    /// This method allows the store to chunk large amounts of data into smaller blocks to fit the
+    /// storage medium and it may also involve creation of merkle nodes to represent the chunks.
+    ///
+    /// # Errors
+    ///
+    /// If the bytes are too large, `StoreError::RawBlockTooLarge` is returned.
+    fn put_bytes(
+        &self,
+        reader: impl AsyncRead + Send,
+    ) -> impl Future<Output = StoreResult<Cid>> + Send;
+
+    /// Tries to save `bytes` as a single block to the store. Unlike `put_bytes`, this method does
+    /// not chunk the data and does not create intermediate merkle nodes.
+    ///
+    /// # Errors
+    ///
+    /// If the bytes are too large, `StoreError::RawBlockTooLarge` is returned.
+    fn put_raw_block(
+        &self,
+        bytes: impl Into<Bytes> + Send,
+    ) -> impl Future<Output = StoreResult<Cid>> + Send;
 
     /// Gets a type stored as an IPLD data from the store by its `Cid`.
-    fn get<D>(&self, cid: impl Into<Cid>) -> impl Future<Output = StoreResult<D>>
+    fn get_node<D>(&self, cid: &Cid) -> impl Future<Output = StoreResult<D>> + Send
     where
-        D: DeserializeOwned;
+        D: DeserializeOwned + Send;
 
-    /// Gets the block stored in the store as raw bytes by its `Cid`.
-    fn get_bytes(&self, cid: impl Into<Cid>) -> impl Future<Output = StoreResult<Bytes>>;
+    /// Gets a reader for the underlying bytes associated with the given `Cid`.
+    fn get_bytes<'a>(
+        &'a self,
+        cid: &'a Cid,
+    ) -> impl Future<Output = StoreResult<Pin<Box<dyn AsyncRead + Send + 'a>>>>; // TODO: Needs to be AsyncSeek + Send as well
 
-    /// Gets the direct CID references contained in a given IPLD data.
-    fn references(&self, cid: impl Into<Cid>) -> impl Future<Output = StoreResult<HashSet<Cid>>>;
+    /// Retrieves raw bytes of a single block from the store by its `Cid`.
+    ///
+    /// Unlike `get_stream`, this method does not expect chunked data and does not have to retrieve
+    /// intermediate merkle nodes.
+    ///
+    /// # Errors
+    ///
+    /// If the block is not found, `StoreError::BlockNotFound` is returned.
+    fn get_raw_block(&self, cid: &Cid) -> impl Future<Output = StoreResult<Bytes>> + Send;
+
+    /// Checks if the store has a block with the given `Cid`.
+    fn has(&self, cid: &Cid) -> impl Future<Output = bool>;
 
     /// Returns the codecs supported by the store.
     fn supported_codecs(&self) -> HashSet<Codec>;
 
-    // /// Tries to delete all blocks reachable from the given `cid` as long as the blocks are not reachable to other blocks
-    // /// outside the given `cid` and its references.
+    /// Returns the allowed maximum block size for IPLD and merkle nodes.
+    /// If there is no limit, `None` is returned.
+    fn node_block_max_size(&self) -> Option<u64>;
+
+    /// Returns the allowed maximum block size for raw bytes.
+    /// If there is no limit, `None` is returned.
+    fn raw_block_max_size(&self) -> Option<u64>;
+
+    // /// Forcefully deletes all blocks represented by `cids` and attempts to delete or dereference
+    // /// all blocks that are reachable from the `cids`.
     // ///
     // /// Returns `true` if at least the `cid` block was deleted.
-    // fn derefence(&self, cid: impl Into<Cid>) -> impl Future<Output = StoreResult<bool>>;
+    // fn delete(&self, cids: impl IntoIterator<Item = Cid>) -> impl Future<Output = StoreResult<bool>>;
+}
 
-    // /// Returns the maximum block size the store can handle.
-    // fn max_block_size(&self) -> usize;
+/// Helper extensions to the `IpldStore` trait.
+pub trait IpldStoreExt: IpldStore {
+    /// Reads all the bytes associated with the given `Cid` into a single `Bytes` type.
+    fn read_all_bytes(&self, cid: &Cid) -> impl Future<Output = StoreResult<Bytes>> {
+        async {
+            let mut reader = self.get_bytes(cid).await?;
+            let mut bytes = Vec::new();
+
+            reader
+                .read_to_end(&mut bytes)
+                .await
+                .map_err(StoreError::custom)?;
+
+            Ok(Bytes::from(bytes))
+        }
+    }
 }
 
 /// The different codecs supported by the IPLD store.
@@ -116,3 +170,5 @@ impl From<Codec> for u64 {
         }
     }
 }
+
+impl<T> IpldStoreExt for T where T: IpldStore {}
