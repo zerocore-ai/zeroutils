@@ -20,15 +20,12 @@ use crate::{
 // Types
 //--------------------------------------------------------------------------------------------------
 
-/// An in-memory storage for IPLD and raw blocks with reference counting.
+/// An in-memory storage for IPLD node and raw blocks with reference counting.
 ///
 /// This store maintains a reference count for each stored block. Reference counting is used to
 /// determine when a block can be safely removed from the store.
-///
-/// Raw bytes stored in the store get chunked if they exceed a certain size. The chunking is done
-/// using the `chunker` provided to the store.
 #[derive(Debug, Clone)]
-// TODO: Use BalancedDagLayout eventually
+// TODO: Use RabinChunker and BalancedDagLayout as default
 pub struct MemoryStore<C = FixedSizeChunker, L = FlatDagLayout>
 where
     C: Chunker,

@@ -10,7 +10,10 @@ use crate::{IpldStore, Layout, StoreResult};
 
 /// A layout that organizes data into a balanced DAG.
 #[derive(Clone, Debug, PartialEq)]
-pub struct BalancedDagLayout {}
+pub struct BalancedDagLayout {
+    /// The maximum number of children each node can have.
+    degree: usize,
+}
 
 //--------------------------------------------------------------------------------------------------
 // Trait Implementations

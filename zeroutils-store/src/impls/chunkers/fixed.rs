@@ -1,6 +1,6 @@
 use std::pin::pin;
 
-use async_stream::stream;
+use async_stream::try_stream;
 use bytes::Bytes;
 use futures::stream::BoxStream;
 use tokio::io::{AsyncRead, AsyncReadExt};
@@ -41,7 +41,7 @@ impl Chunker for FixedSizeChunker {
     ) -> StoreResult<BoxStream<'a, StoreResult<Bytes>>> {
         let chunk_size = self.chunk_size;
 
-        let s = stream! {
+        let s = try_stream! {
             let reader = pin!(reader);
             let mut chunk_reader = reader.take(chunk_size); // Derives a reader for reading the first chunk.
 
@@ -53,7 +53,7 @@ impl Chunker for FixedSizeChunker {
                     break;
                 }
 
-                yield Ok(Bytes::from(chunk));
+                yield Bytes::from(chunk);
 
                 chunk_reader = chunk_reader.into_inner().take(chunk_size); // Derives a reader for reading the next chunk.
             }

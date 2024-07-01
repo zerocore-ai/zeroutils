@@ -97,15 +97,14 @@ pub trait IpldStore: Clone {
     /// If there is no limit, `None` is returned.
     fn node_block_max_size(&self) -> Option<u64>;
 
-    /// Returns the allowed maximum block size for raw bytes.
-    /// If there is no limit, `None` is returned.
+    /// Returns the allowed maximum block size for raw bytes. If there is no limit, `None` is returned.
     fn raw_block_max_size(&self) -> Option<u64>;
 
-    // /// Forcefully deletes all blocks represented by `cids` and attempts to delete or dereference
-    // /// all blocks that are reachable from the `cids`.
+    // /// Attempts to delete all node and raw blocks associated with `cid` and also tries to delete
+    // /// or dereference all blocks that are reachable from the `cid`.
     // ///
-    // /// Returns `true` if at least the `cid` block was deleted.
-    // fn delete(&self, cids: impl IntoIterator<Item = Cid>) -> impl Future<Output = StoreResult<bool>>;
+    // /// Returns `true` if at least the blocks associated with `cid` were deleted.
+    // fn delete(&self, cid: &Cid) -> impl Future<Output = StoreResult<bool>>;
 }
 
 /// Helper extensions to the `IpldStore` trait.
