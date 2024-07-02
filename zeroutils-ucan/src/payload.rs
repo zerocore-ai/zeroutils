@@ -23,7 +23,7 @@ use crate::{Capabilities, Facts, Proofs, UcanError, UcanResult};
 // Constants
 //--------------------------------------------------------------------------------------------------
 
-/// Represents the payload part of a UCAN token, which contains all the claims and data necessary for the authorization process.
+/// The version of the UCAN protocol supported by this crate.
 pub const VERSION: &str = "0.10.0-alpha.1";
 
 //--------------------------------------------------------------------------------------------------
