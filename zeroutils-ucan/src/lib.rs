@@ -35,7 +35,6 @@ mod proofs;
 mod resolution;
 mod signature;
 mod ucan;
-mod uri;
 
 //--------------------------------------------------------------------------------------------------
 // Exports
@@ -54,7 +53,6 @@ pub use proofs::*;
 pub use resolution::*;
 pub use signature::*;
 pub use ucan::*;
-pub use uri::*;
 
 //--------------------------------------------------------------------------------------------------
 // Re-Exports

@@ -457,7 +457,7 @@ where
     }
 
     async fn load(cid: &Cid, store: S) -> StoreResult<Self> {
-        let bytes = store.read_all_bytes(cid).await?;
+        let bytes = store.read_all(cid).await?;
         let encoded = std::str::from_utf8(&bytes).map_err(StoreError::custom)?;
         SignedUcan::try_from_str(encoded, store).map_err(StoreError::custom)
     }

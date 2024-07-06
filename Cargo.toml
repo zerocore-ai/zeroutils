@@ -24,6 +24,7 @@ anyhow = "1.0.79"
 bytes = "1.6.0"
 futures = "0.3.30"
 libipld = "0.16.0"
+pin-project = "1.1.5"
 regex = "1.10.4"
 serde = { version = "1.0.194", features = ["derive"] }
 test-log = { version = "0.2.14", features = ["trace"] }

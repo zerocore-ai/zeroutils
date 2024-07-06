@@ -27,7 +27,7 @@ impl IpldStore for PlaceholderStore {
         unimplemented!("placeholder")
     }
 
-    async fn put_bytes(&self, _: impl AsyncRead) -> StoreResult<Cid> {
+    async fn put_bytes<'a>(&'a self, _: impl AsyncRead + Send + 'a) -> StoreResult<Cid> {
         unimplemented!("placeholder")
     }
 

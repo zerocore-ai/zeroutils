@@ -2,6 +2,7 @@ mod ability;
 mod capability;
 mod caveats;
 mod macros;
+mod uri;
 
 //--------------------------------------------------------------------------------------------------
 // Exports
@@ -10,3 +11,4 @@ mod macros;
 pub use ability::*;
 pub use capability::*;
 pub use caveats::*;
+pub use uri::*;

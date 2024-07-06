@@ -35,7 +35,7 @@ impl RabinChunker {
 //--------------------------------------------------------------------------------------------------
 
 impl Chunker for RabinChunker {
-    fn chunk<'a>(
+    async fn chunk<'a>(
         &self,
         _reader: impl AsyncRead + Send + 'a,
     ) -> StoreResult<BoxStream<'a, StoreResult<Bytes>>> {

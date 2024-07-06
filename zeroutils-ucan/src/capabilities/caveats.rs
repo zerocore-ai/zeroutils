@@ -84,22 +84,22 @@ impl Caveats {
 
     /// Checks if the given `requested` caveats are permitted by main caveats.
     ///
-    /// An object in the caveat array, represents a caveat. When checking the `requested` caveats array against
-    /// the main one, the objects in the caveats array are ORed together while the fields in each object
-    /// are ANDed together.
+    /// An object in the caveat array represents a caveat. When checking the `requested` caveats array against
+    /// the main one, the caveats in the array are ORed together while the fields in each caveat object are ANDed
+    /// together.
     ///
-    /// ### ANDed Fields
+    /// ### `AND`ed Fields
     ///
-    /// ANDed fields means the value of each object in the `requested` caveats array must have a superset relationship with
-    /// corresponding objects in the main caveats array.
+    /// ANDed fields means that a requested caveat object has a superset relationship with a corresponding caveat object
+    /// in the main caveats array.
     ///
-    /// For example, if the main caveat array is `[{ "max_count": 5 }]` and `requested` is
-    /// `[{ "max_count": 5, "status": "active" }]`, the `requested` caveats are permitted. This is due to the `AND` semantics
-    /// of caveat fields, the `status` field here adds an additional constraint to `requested` caveats.
+    /// For example, if main caveat is `{ "max_count": 5 }` and requested caveat is `{ "max_count": 5, "status": "active" }`,
+    /// the requested caveat is permitted. This is due to the `AND` semantics of caveat fields, the `status` field here adds
+    /// additional constraint to `requested` caveat.
     ///
-    /// ### ORed Array
+    /// ### `OR`ed Array
     ///
-    /// Meanwhile, the `requested` caveats array itself has a subset relationship with the main caveats array.
+    /// Meanwhile, the enclosing main "caveats" array must have a superset relationship with requested caveats array.
     ///
     /// For example, if the main caveats array contains `[{ "max_count": 5 }, { "status": "active" }]` and `requested` has
     /// `[{ "max_count": 5 }]`, the `requested` caveats are permitted. This is due to the `OR` semantics of the caveats array,

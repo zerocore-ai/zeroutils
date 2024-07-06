@@ -9,11 +9,10 @@ use futures::StreamExt;
 use libipld::Cid;
 use serde::{de::DeserializeOwned, Serialize};
 use tokio::{io::AsyncRead, sync::RwLock};
-use tokio_util::io::StreamReader;
 
 use crate::{
-    utils, Chunker, Codec, FixedSizeChunker, FlatDagLayout, IpldReferences, IpldStore, Layout,
-    StoreError, StoreResult,
+    utils, Chunker, Codec, FixedSizeChunker, FlatLayout, IpldReferences, IpldStore,
+    IpldStoreSeekable, Layout, LayoutSeekable, SeekableReader, StoreError, StoreResult,
 };
 
 //--------------------------------------------------------------------------------------------------
@@ -25,8 +24,8 @@ use crate::{
 /// This store maintains a reference count for each stored block. Reference counting is used to
 /// determine when a block can be safely removed from the store.
 #[derive(Debug, Clone)]
-// TODO: Use RabinChunker and BalancedDagLayout as default
-pub struct MemoryStore<C = FixedSizeChunker, L = FlatDagLayout>
+// TODO: Use BalancedDagLayout as default
+pub struct MemoryStore<C = FixedSizeChunker, L = FlatLayout>
 where
     C: Chunker,
     L: Layout,
@@ -65,6 +64,7 @@ where
     }
 
     /// Prints all the blocks in the store.
+    // TODO: Probably change to display implementation with tokio spawn.
     pub async fn print(&self) {
         let blocks = self.blocks.read().await;
         for (cid, (size, bytes)) in blocks.iter() {
@@ -118,9 +118,9 @@ where
         Ok(self.store_raw(bytes, Codec::DagCbor).await)
     }
 
-    async fn put_bytes(&self, reader: impl AsyncRead + Send) -> StoreResult<Cid> {
-        let chunk_stream = self.chunker.chunk(reader)?;
-        let mut cid_stream = self.layout.store(chunk_stream, self.clone())?;
+    async fn put_bytes<'a>(&'a self, reader: impl AsyncRead + Send + 'a) -> StoreResult<Cid> {
+        let chunk_stream = self.chunker.chunk(reader).await?;
+        let mut cid_stream = self.layout.organize(chunk_stream, self.clone()).await?;
 
         // Take the last `Cid` from the stream.
         let mut cid = cid_stream.next().await.unwrap()?;
@@ -163,13 +163,7 @@ where
         &'a self,
         cid: &'a Cid,
     ) -> StoreResult<Pin<Box<dyn AsyncRead + Send + 'a>>> {
-        let chunk_stream = self.layout.load(cid, self.clone())?;
-        let chunk_stream = chunk_stream.map(|result| {
-            result.map_err(|err| std::io::Error::new(std::io::ErrorKind::Other, err))
-        });
-
-        let reader = StreamReader::new(chunk_stream);
-        Ok(Box::pin(reader))
+        self.layout.retrieve(cid, self.clone()).await
     }
 
     async fn get_raw_block(&self, cid: &Cid) -> StoreResult<Bytes> {
@@ -207,12 +201,25 @@ where
     }
 }
 
+impl<C, L> IpldStoreSeekable for MemoryStore<C, L>
+where
+    C: Chunker + Clone + Send + Sync,
+    L: LayoutSeekable + Clone + Send + Sync,
+{
+    async fn get_seekable_bytes<'a>(
+        &'a self,
+        cid: &'a Cid,
+    ) -> StoreResult<Pin<Box<dyn SeekableReader + Send + 'a>>> {
+        self.layout.retrieve_seekable(cid, self.clone()).await
+    }
+}
+
 impl Default for MemoryStore {
     fn default() -> Self {
         MemoryStore {
             blocks: Arc::new(RwLock::new(HashMap::new())),
             chunker: FixedSizeChunker::default(),
-            layout: FlatDagLayout::default(),
+            layout: FlatLayout::default(),
         }
     }
 }
@@ -226,33 +233,6 @@ mod tests {
     use tokio::io::AsyncReadExt;
 
     use super::*;
-
-    mod fixture {
-        use libipld::Cid;
-        use serde::{Deserialize, Serialize};
-
-        use crate::IpldReferences;
-
-        //--------------------------------------------------------------------------------------------------
-        // Types
-        //--------------------------------------------------------------------------------------------------
-
-        #[derive(Clone, Serialize, Deserialize, Debug, PartialEq)]
-        pub(super) struct Directory {
-            pub(super) name: String,
-            pub(super) entries: Vec<Cid>,
-        }
-
-        //--------------------------------------------------------------------------------------------------
-        // Trait Implementations
-        //--------------------------------------------------------------------------------------------------
-
-        impl IpldReferences for Directory {
-            fn references<'a>(&'a self) -> Box<dyn Iterator<Item = &'a Cid> + Send + 'a> {
-                Box::new(self.entries.iter())
-            }
-        }
-    }
 
     #[tokio::test]
     async fn test_memory_store_put_and_get() -> anyhow::Result<()> {
@@ -271,7 +251,7 @@ mod tests {
 
         //================= IPLD =================
 
-        let data = fixture::Directory {
+        let data = fixtures::Directory {
             name: "root".to_string(),
             entries: vec![
                 utils::make_cid(Codec::Raw, &[1, 2, 3]),
@@ -280,10 +260,37 @@ mod tests {
         };
 
         let cid = store.put_node(&data).await?;
-        let res = store.get_node::<fixture::Directory>(&cid).await?;
+        let res = store.get_node::<fixtures::Directory>(&cid).await?;
 
         assert_eq!(res, data);
 
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod fixtures {
+    use serde::Deserialize;
+
+    use super::*;
+
+    //--------------------------------------------------------------------------------------------------
+    // Types
+    //--------------------------------------------------------------------------------------------------
+
+    #[derive(Clone, Serialize, Deserialize, Debug, PartialEq)]
+    pub(super) struct Directory {
+        pub(super) name: String,
+        pub(super) entries: Vec<Cid>,
+    }
+
+    //--------------------------------------------------------------------------------------------------
+    // Trait Implementations
+    //--------------------------------------------------------------------------------------------------
+
+    impl IpldReferences for Directory {
+        fn references<'a>(&'a self) -> Box<dyn Iterator<Item = &'a Cid> + Send + 'a> {
+            Box::new(self.entries.iter())
+        }
     }
 }

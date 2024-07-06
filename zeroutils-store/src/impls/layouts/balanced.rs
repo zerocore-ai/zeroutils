@@ -1,6 +1,9 @@
+use std::pin::Pin;
+
 use bytes::Bytes;
 use futures::stream::BoxStream;
 use libipld::Cid;
+use tokio::io::AsyncRead;
 
 use crate::{IpldStore, Layout, StoreResult};
 
@@ -20,19 +23,19 @@ pub struct BalancedDagLayout {
 //--------------------------------------------------------------------------------------------------
 
 impl Layout for BalancedDagLayout {
-    fn store<'a>(
+    async fn organize<'a>(
         &self,
-        mut _stream: BoxStream<'a, StoreResult<Bytes>>,
+        _stream: BoxStream<'a, StoreResult<Bytes>>,
         _store: impl IpldStore + Send + 'a,
     ) -> StoreResult<BoxStream<'a, StoreResult<Cid>>> {
         todo!() // TODO: To be implemented
     }
 
-    fn load<'a>(
+    async fn retrieve<'a>(
         &self,
-        _cid: &'a Cid,
+        _cid: &Cid,
         _store: impl IpldStore + Send + 'a,
-    ) -> StoreResult<BoxStream<'a, StoreResult<Bytes>>> {
+    ) -> StoreResult<Pin<Box<dyn AsyncRead + Send + 'a>>> {
         todo!() // TODO: To be implemented
     }
 }

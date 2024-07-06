@@ -35,7 +35,7 @@ impl FixedSizeChunker {
 //--------------------------------------------------------------------------------------------------
 
 impl Chunker for FixedSizeChunker {
-    fn chunk<'a>(
+    async fn chunk<'a>(
         &self,
         reader: impl AsyncRead + Send + 'a,
     ) -> StoreResult<BoxStream<'a, StoreResult<Bytes>>> {
@@ -88,7 +88,7 @@ mod tests {
         let data = b"Lorem ipsum dolor sit amet, consectetur adipiscing elit.";
         let chunker = FixedSizeChunker::new(10);
 
-        let mut chunk_stream = chunker.chunk(&data[..])?;
+        let mut chunk_stream = chunker.chunk(&data[..]).await?;
         let mut chunks = vec![];
 
         while let Some(chunk) = chunk_stream.next().await {

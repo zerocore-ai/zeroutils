@@ -5,12 +5,32 @@ use libipld::Cid;
 use serde::{de::DeserializeOwned, Serialize};
 use tokio::io::{AsyncRead, AsyncReadExt};
 
-use crate::{IpldReferences, StoreError};
+use crate::{IpldReferences, SeekableReader, StoreError};
 
 use super::StoreResult;
 
 //--------------------------------------------------------------------------------------------------
-// Traits
+// Types
+//--------------------------------------------------------------------------------------------------
+
+/// The different codecs supported by the IPLD store.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum Codec {
+    /// Raw bytes.
+    Raw,
+
+    /// DAG-CBOR codec.
+    DagCbor,
+
+    /// DAG-JSON codec.
+    DagJson,
+
+    /// DAG-PB codec.
+    DagPb,
+}
+
+//--------------------------------------------------------------------------------------------------
+// Traits: IpldStore, IpldStoreSeekable, IpldStoreExt
 //--------------------------------------------------------------------------------------------------
 
 /// `IpldStore` is a content-addressable store for [`IPLD` (InterPlanetary Linked Data)][ipld] that
@@ -50,10 +70,10 @@ pub trait IpldStore: Clone {
     /// # Errors
     ///
     /// If the bytes are too large, `StoreError::RawBlockTooLarge` is returned.
-    fn put_bytes(
-        &self,
-        reader: impl AsyncRead + Send,
-    ) -> impl Future<Output = StoreResult<Cid>> + Send;
+    fn put_bytes<'a>(
+        &'a self,
+        reader: impl AsyncRead + Send + 'a,
+    ) -> impl Future<Output = StoreResult<Cid>> + 'a;
 
     /// Tries to save `bytes` as a single block to the store. Unlike `put_bytes`, this method does
     /// not chunk the data and does not create intermediate merkle nodes.
@@ -75,7 +95,7 @@ pub trait IpldStore: Clone {
     fn get_bytes<'a>(
         &'a self,
         cid: &'a Cid,
-    ) -> impl Future<Output = StoreResult<Pin<Box<dyn AsyncRead + Send + 'a>>>>; // TODO: Needs to be AsyncSeek + Send as well
+    ) -> impl Future<Output = StoreResult<Pin<Box<dyn AsyncRead + Send + 'a>>>> + 'a;
 
     /// Retrieves raw bytes of a single block from the store by its `Cid`.
     ///
@@ -107,10 +127,10 @@ pub trait IpldStore: Clone {
     // fn delete(&self, cid: &Cid) -> impl Future<Output = StoreResult<bool>>;
 }
 
-/// Helper extensions to the `IpldStore` trait.
+/// Helper extension to the `IpldStore` trait.
 pub trait IpldStoreExt: IpldStore {
     /// Reads all the bytes associated with the given `Cid` into a single `Bytes` type.
-    fn read_all_bytes(&self, cid: &Cid) -> impl Future<Output = StoreResult<Bytes>> {
+    fn read_all(&self, cid: &Cid) -> impl Future<Output = StoreResult<Bytes>> {
         async {
             let mut reader = self.get_bytes(cid).await?;
             let mut bytes = Vec::new();
@@ -125,20 +145,13 @@ pub trait IpldStoreExt: IpldStore {
     }
 }
 
-/// The different codecs supported by the IPLD store.
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub enum Codec {
-    /// Raw bytes.
-    Raw,
-
-    /// DAG-CBOR codec.
-    DagCbor,
-
-    /// DAG-JSON codec.
-    DagJson,
-
-    /// DAG-PB codec.
-    DagPb,
+/// `IpldStoreSeekable` is a trait that extends the `IpldStore` trait to allow for seeking.
+pub trait IpldStoreSeekable: IpldStore {
+    /// Gets a seekable reader for the underlying bytes associated with the given `Cid`.
+    fn get_seekable_bytes<'a>(
+        &'a self,
+        cid: &'a Cid,
+    ) -> impl Future<Output = StoreResult<Pin<Box<dyn SeekableReader + Send + 'a>>>>;
 }
 
 //--------------------------------------------------------------------------------------------------

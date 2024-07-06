@@ -15,7 +15,7 @@ use crate::IpldReferences;
 /// preserves the original order of the data. See [`MemoryStore`] for an example of how this is
 /// used.
 ///
-/// # Important
+/// ## Important
 ///
 /// The serialized form of this data structure is typically expected to fit in a single node block.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -23,8 +23,13 @@ pub struct MerkleNode {
     /// The size in bytes of the data this node represents.
     pub size: usize,
 
-    /// The CIDs of the direct dependencies of this node.
-    pub dependencies: Vec<Cid>,
+    // /// The parent of the merkle node.
+    // pub parent: Option<Cid>,
+    /// The direct children of this node, represented as a vector of tuples.
+    /// Each tuple contains:
+    /// - `Cid`: The content identifier (CID) of the child node.
+    /// - `usize`: The size in bytes of the data referenced by the CID.
+    pub children: Vec<(Cid, usize)>,
 }
 
 //--------------------------------------------------------------------------------------------------
@@ -33,10 +38,17 @@ pub struct MerkleNode {
 
 impl MerkleNode {
     /// Create a new `MerkleNode` with the given size and dependencies.
-    pub fn new(size: usize, dependencies: impl IntoIterator<Item = Cid>) -> Self {
+    pub fn new(children: impl IntoIterator<Item = (Cid, usize)>) -> Self {
+        let mut size = 0;
+        let mut deps = Vec::new();
+        for (cid, byte_size) in children {
+            size += byte_size;
+            deps.push((cid, byte_size));
+        }
+
         Self {
             size,
-            dependencies: dependencies.into_iter().collect(),
+            children: deps,
         }
     }
 }
@@ -47,6 +59,6 @@ impl MerkleNode {
 
 impl IpldReferences for MerkleNode {
     fn references<'a>(&'a self) -> Box<dyn Iterator<Item = &'a Cid> + Send + 'a> {
-        Box::new(self.dependencies.iter())
+        Box::new(self.children.iter().map(|(cid, _)| cid))
     }
 }

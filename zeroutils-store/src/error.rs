@@ -38,6 +38,18 @@ pub enum StoreError {
     /// Custom error.
     #[error("Custom error: {0}")]
     Custom(#[from] AnyError),
+
+    /// Layout error.
+    #[error("Layout error: {0}")]
+    LayoutError(#[from] LayoutError),
+}
+
+/// An error that occurred during a layout operation.
+#[derive(Debug, Error, PartialEq)]
+pub enum LayoutError {
+    /// No leaf block found.
+    #[error("No leaf block found")]
+    NoLeafBlock,
 }
 
 /// An error that can represent any error.

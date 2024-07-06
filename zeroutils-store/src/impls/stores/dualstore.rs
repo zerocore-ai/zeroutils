@@ -158,7 +158,7 @@ where
         self.put_node_into(data, self.config.default).await
     }
 
-    async fn put_bytes(&self, bytes: impl AsyncRead + Send) -> StoreResult<Cid> {
+    async fn put_bytes<'a>(&'a self, bytes: impl AsyncRead + Send + 'a) -> StoreResult<Cid> {
         self.put_bytes_into(bytes, self.config.default).await
     }
 

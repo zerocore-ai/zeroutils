@@ -58,7 +58,7 @@ where
             .get(cid)
             .ok_or(UcanError::ProofCidNotFound(*cid))?
             .get_or_try_init(async {
-                let bytes = store.read_all_bytes(cid).await?;
+                let bytes = store.read_all(cid).await?;
                 let ucan_str = std::str::from_utf8(&bytes)?;
                 SignedUcan::try_from_str(ucan_str, store.clone())
             })
@@ -99,7 +99,7 @@ where
     pub async fn fetch_ucan<'b>(&'b self, store: &'b S) -> UcanResult<&'b SignedUcan<S>> {
         self.cache
             .get_or_try_init(async {
-                let bytes = store.read_all_bytes(&self.cid).await?;
+                let bytes = store.read_all(&self.cid).await?;
                 let ucan_str = std::str::from_utf8(&bytes)?;
                 SignedUcan::try_from_str(ucan_str, store.clone())
             })

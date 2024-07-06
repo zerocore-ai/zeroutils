@@ -1,5 +1,5 @@
 use bytes::Bytes;
-use futures::stream::BoxStream;
+use futures::{stream::BoxStream, Future};
 use tokio::io::AsyncRead;
 
 use crate::StoreResult;
@@ -8,7 +8,7 @@ use crate::StoreResult;
 // Traits
 //--------------------------------------------------------------------------------------------------
 
-/// A chunker that splits data into chunks and returns a stream of bytes.
+/// A chunker that splits incoming bytes into chunks and returns those chunks as a stream.
 ///
 /// This can be used by stores chunkers.
 pub trait Chunker {
@@ -16,7 +16,7 @@ pub trait Chunker {
     fn chunk<'a>(
         &self,
         reader: impl AsyncRead + Send + 'a,
-    ) -> StoreResult<BoxStream<'a, StoreResult<Bytes>>>;
+    ) -> impl Future<Output = StoreResult<BoxStream<'a, StoreResult<Bytes>>>> + Send;
 
     /// Returns the allowed maximum chunk size. If there is no limit, `None` is returned.
     fn chunk_max_size(&self) -> Option<u64>;
