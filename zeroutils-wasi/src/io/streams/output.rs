@@ -4,7 +4,7 @@ use wasmtime::component::Resource;
 
 use crate::{
     bindgen::streams,
-    io::{PollableHandle, Subscribe},
+    io::{Await, PollableHandle, Subscribe},
     state::WasiTableState,
 };
 
@@ -23,7 +23,7 @@ pub type OutputStreamHandle = Box<dyn OutputStream>;
 
 /// An output stream implementation that conforms with `wasi:io/streams.output-stream`.
 #[async_trait]
-pub trait OutputStream: Subscribe {
+pub trait OutputStream: Await {
     /// Writes bytes to the stream. This is a non-blocking operation.
     ///
     /// This operation requires that `check_write_permit` is called first to ensure that
@@ -63,7 +63,7 @@ pub trait OutputStream: Subscribe {
     /// Waits for the stream to be ready for writing and returns the number bytes that
     /// can be written to it.
     async fn blocking_write_permit(&mut self) -> Result<u64, StreamError> {
-        self.block().await;
+        self.wait().await;
         self.write_permit()
     }
 
@@ -76,6 +76,13 @@ pub trait OutputStream: Subscribe {
 //--------------------------------------------------------------------------------------------------
 // Trait Implementations
 //--------------------------------------------------------------------------------------------------
+
+#[async_trait]
+impl Await for OutputStreamHandle {
+    async fn wait(&mut self) {
+        (**self).wait().await
+    }
+}
 
 #[async_trait]
 impl<T> streams::HostOutputStream for T
@@ -117,7 +124,7 @@ where
         }
 
         stream.flush()?; // Flush the stream.
-        stream.block().await; // Wait for the stream to be ready again to be sure all data is written.
+        stream.wait().await; // Wait for the stream to be ready again to be sure all data is written.
 
         Ok(())
     }
@@ -152,7 +159,7 @@ where
         }
 
         stream.flush()?; // Flush the stream.
-        stream.block().await; // Wait for the stream to be ready again to be sure all data is written.
+        stream.wait().await; // Wait for the stream to be ready again to be sure all data is written.
 
         Ok(())
     }
@@ -167,7 +174,7 @@ where
     ) -> Result<(), StreamError> {
         let stream = self.table_mut().get_mut(&stream)?;
         stream.flush()?;
-        stream.block().await; // Wait for the stream to be ready again to be sure all data is written.
+        stream.wait().await; // Wait for the stream to be ready again to be sure all data is written.
         Ok(())
     }
 
@@ -203,8 +210,8 @@ where
     ) -> Result<u64, StreamError> {
         // TODO(appcypher): This is based on https://github.com/bytecodealliance/wasmtime/blob/7de48789b788b4554919b28559f80c5dc395e038/crates/wasi/src/host/io.rs#L158-L172
         // TODO(appcypher): But shouldn't `blocking_splice` be similar to `blocking_write_and_flush` by writing exactly `len` bytes from `src` to `dest` instead of writing as much as possible?
-        self.table_mut().get_mut(&src)?.block().await;
-        self.table_mut().get_mut(&dest)?.block().await;
+        self.table_mut().get_mut(&src)?.wait().await;
+        self.table_mut().get_mut(&dest)?.wait().await;
         self.splice(dest, src, len).await
     }
 
@@ -218,12 +225,5 @@ where
     fn drop(&mut self, stream: Resource<OutputStreamHandle>) -> wasmtime::Result<()> {
         self.table_mut().delete(stream)?;
         Ok(())
-    }
-}
-
-#[async_trait]
-impl Subscribe for OutputStreamHandle {
-    async fn block(&self) {
-        (**self).block().await;
     }
 }

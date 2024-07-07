@@ -72,7 +72,7 @@ pub trait IpldStore: Clone {
     /// If the bytes are too large, `StoreError::RawBlockTooLarge` is returned.
     fn put_bytes<'a>(
         &'a self,
-        reader: impl AsyncRead + Send + 'a,
+        reader: impl AsyncRead + Send + Sync + 'a,
     ) -> impl Future<Output = StoreResult<Cid>> + 'a;
 
     /// Tries to save `bytes` as a single block to the store. Unlike `put_bytes`, this method does
@@ -95,7 +95,7 @@ pub trait IpldStore: Clone {
     fn get_bytes<'a>(
         &'a self,
         cid: &'a Cid,
-    ) -> impl Future<Output = StoreResult<Pin<Box<dyn AsyncRead + Send + 'a>>>> + 'a;
+    ) -> impl Future<Output = StoreResult<Pin<Box<dyn AsyncRead + Send + Sync + 'a>>>> + 'a;
 
     /// Retrieves raw bytes of a single block from the store by its `Cid`.
     ///
@@ -105,20 +105,20 @@ pub trait IpldStore: Clone {
     /// # Errors
     ///
     /// If the block is not found, `StoreError::BlockNotFound` is returned.
-    fn get_raw_block(&self, cid: &Cid) -> impl Future<Output = StoreResult<Bytes>> + Send;
+    fn get_raw_block(&self, cid: &Cid) -> impl Future<Output = StoreResult<Bytes>> + Send + Sync;
 
     /// Checks if the store has a block with the given `Cid`.
     fn has(&self, cid: &Cid) -> impl Future<Output = bool>;
 
     /// Returns the codecs supported by the store.
-    fn supported_codecs(&self) -> HashSet<Codec>;
+    fn get_supported_codecs(&self) -> HashSet<Codec>;
 
     /// Returns the allowed maximum block size for IPLD and merkle nodes.
     /// If there is no limit, `None` is returned.
-    fn node_block_max_size(&self) -> Option<u64>;
+    fn get_node_block_max_size(&self) -> Option<u64>;
 
     /// Returns the allowed maximum block size for raw bytes. If there is no limit, `None` is returned.
-    fn raw_block_max_size(&self) -> Option<u64>;
+    fn get_raw_block_max_size(&self) -> Option<u64>;
 
     // /// Attempts to delete all node and raw blocks associated with `cid` and also tries to delete
     // /// or dereference all blocks that are reachable from the `cid`.

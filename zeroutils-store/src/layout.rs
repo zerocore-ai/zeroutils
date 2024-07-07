@@ -31,7 +31,7 @@ pub trait Layout {
         &self,
         cid: &Cid,
         store: impl IpldStore + Send + Sync + 'a,
-    ) -> impl Future<Output = StoreResult<Pin<Box<dyn AsyncRead + Send + 'a>>>> + Send;
+    ) -> impl Future<Output = StoreResult<Pin<Box<dyn AsyncRead + Send + Sync + 'a>>>> + Send;
 }
 
 /// A trait that extends the `Layout` trait to allow for seeking.

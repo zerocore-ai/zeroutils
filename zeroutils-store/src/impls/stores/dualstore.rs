@@ -73,7 +73,7 @@ where
         &'a self,
         cid: &'a Cid,
         choice: Choice,
-    ) -> StoreResult<Pin<Box<dyn AsyncRead + Send + 'a>>> {
+    ) -> StoreResult<Pin<Box<dyn AsyncRead + Send + Sync + 'a>>> {
         match choice {
             Choice::A => self.store_a.get_bytes(cid).await,
             Choice::B => self.store_b.get_bytes(cid).await,
@@ -102,7 +102,7 @@ where
     /// Saves raw bytes to a chosen store and returns the `Cid` to it.
     pub async fn put_bytes_into(
         &self,
-        bytes: impl AsyncRead + Send,
+        bytes: impl AsyncRead + Send + Sync,
         choice: Choice,
     ) -> StoreResult<Cid> {
         match choice {
@@ -158,7 +158,7 @@ where
         self.put_node_into(data, self.config.default).await
     }
 
-    async fn put_bytes<'a>(&'a self, bytes: impl AsyncRead + Send + 'a) -> StoreResult<Cid> {
+    async fn put_bytes<'a>(&'a self, bytes: impl AsyncRead + Send + Sync + 'a) -> StoreResult<Cid> {
         self.put_bytes_into(bytes, self.config.default).await
     }
 
@@ -183,7 +183,7 @@ where
     async fn get_bytes<'a>(
         &'a self,
         cid: &'a Cid,
-    ) -> StoreResult<Pin<Box<dyn AsyncRead + Send + 'a>>> {
+    ) -> StoreResult<Pin<Box<dyn AsyncRead + Send + Sync + 'a>>> {
         match self.get_bytes_from(cid, self.config.default).await {
             Ok(bytes) => Ok(bytes),
             Err(StoreError::BlockNotFound(_)) => {
@@ -212,24 +212,24 @@ where
         }
     }
 
-    fn supported_codecs(&self) -> HashSet<Codec> {
+    fn get_supported_codecs(&self) -> HashSet<Codec> {
         self.store_a
-            .supported_codecs()
+            .get_supported_codecs()
             .into_iter()
-            .chain(self.store_b.supported_codecs())
+            .chain(self.store_b.get_supported_codecs())
             .collect()
     }
 
-    fn node_block_max_size(&self) -> Option<u64> {
+    fn get_node_block_max_size(&self) -> Option<u64> {
         self.store_a
-            .node_block_max_size()
-            .max(self.store_b.node_block_max_size())
+            .get_node_block_max_size()
+            .max(self.store_b.get_node_block_max_size())
     }
 
-    fn raw_block_max_size(&self) -> Option<u64> {
+    fn get_raw_block_max_size(&self) -> Option<u64> {
         self.store_a
-            .raw_block_max_size()
-            .max(self.store_b.raw_block_max_size())
+            .get_raw_block_max_size()
+            .max(self.store_b.get_raw_block_max_size())
     }
 }
 

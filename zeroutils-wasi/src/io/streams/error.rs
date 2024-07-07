@@ -30,6 +30,10 @@ pub enum StreamError {
     )]
     WriteTooLarge(u64),
 
+    /// An error that occurred while using the standard library's io module.
+    #[error("I/O error: {0}")]
+    IoError(#[from] std::io::Error),
+
     /// Downstream error.
     #[error("Downstream error: {0}")]
     DownstreamError(#[from] anyhow::Error),

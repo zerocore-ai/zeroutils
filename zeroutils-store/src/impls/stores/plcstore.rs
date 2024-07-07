@@ -31,7 +31,7 @@ impl IpldStore for PlaceholderStore {
         unimplemented!("placeholder")
     }
 
-    async fn put_raw_block(&self, _: impl Into<Bytes> + Send) -> StoreResult<Cid> {
+    async fn put_raw_block(&self, _: impl Into<Bytes>) -> StoreResult<Cid> {
         unimplemented!("placeholder")
     }
 
@@ -45,7 +45,7 @@ impl IpldStore for PlaceholderStore {
     async fn get_bytes<'a>(
         &'a self,
         _: &'a Cid,
-    ) -> StoreResult<Pin<Box<dyn AsyncRead + Send + 'a>>> {
+    ) -> StoreResult<Pin<Box<dyn AsyncRead + Send + Sync + 'a>>> {
         unimplemented!("placeholder")
     }
 
@@ -57,15 +57,15 @@ impl IpldStore for PlaceholderStore {
         unimplemented!("placeholder")
     }
 
-    fn supported_codecs(&self) -> HashSet<Codec> {
+    fn get_supported_codecs(&self) -> HashSet<Codec> {
         unimplemented!("placeholder")
     }
 
-    fn node_block_max_size(&self) -> Option<u64> {
+    fn get_node_block_max_size(&self) -> Option<u64> {
         unimplemented!("placeholder")
     }
 
-    fn raw_block_max_size(&self) -> Option<u64> {
+    fn get_raw_block_max_size(&self) -> Option<u64> {
         unimplemented!("placeholder")
     }
 }

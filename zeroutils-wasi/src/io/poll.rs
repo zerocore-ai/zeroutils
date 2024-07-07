@@ -4,10 +4,7 @@ use std::{any::Any, collections::HashMap, pin::Pin, task::Poll};
 
 use anyhow::Ok;
 use async_trait::async_trait;
-use futures::{
-    future::{self, poll_fn},
-    Future,
-};
+use futures::{future, Future};
 use wasmtime::component::{Resource, ResourceTable};
 
 use crate::{bindgen::poll, state::WasiTableState};
@@ -25,7 +22,7 @@ pub struct PollableHandle {
     resource_index: u32,
 
     /// A function that returns a future that blocks until the resource is ready.
-    block_future: for<'a> fn(&'a mut dyn Any) -> PollableFuture<'a>,
+    wait_future: for<'a> fn(&'a mut dyn Any) -> PollableFuture<'a>,
 
     /// Lets the pollable drop the resource when no longer needed.
     drop_fn: Option<fn(&mut ResourceTable, u32) -> wasmtime::Result<()>>,
@@ -37,14 +34,17 @@ pub struct PollableHandle {
 
 /// Allows a resource to be waited on.
 #[async_trait]
-pub trait Subscribe: Send + Sync + 'static {
+pub trait Await: Send + Sync + 'static {
     /// **Waits** for the resource to be ready.
     ///
-    /// Although the name says "block", this only refers to the wasm execution context. We don't
-    /// actually want the host runtime thread to block. This is why it is an async function so that
-    /// it can be spawned on a separate blocking thread.
-    async fn block(&self);
+    /// This only _blocks_ from the wasm execution perspective. We don't actually want the host runtime
+    /// thread to block. This is why it is an async function so that it can be spawned on a separate
+    /// blocking thread.
+    async fn wait(&mut self);
+}
 
+/// Allows a resource to be subscribed to.
+pub trait Subscribe: Await {
     /// Derives a pollable resource that can be waited on from `resource`.
     ///
     /// This creates a dependency between the resource and the pollable resource.
@@ -58,9 +58,9 @@ pub trait Subscribe: Send + Sync + 'static {
         // Create a pollable resource that can be waited on.
         let pollable = PollableHandle {
             resource_index: resource.rep(),
-            block_future: |resource| {
+            wait_future: |resource| {
                 let resource = resource.downcast_mut::<Self>().unwrap();
-                resource.block()
+                resource.wait()
             },
             drop_fn: resource.owned().then_some(|table, index| {
                 let resource = Resource::<Self>::new_own(index);
@@ -79,6 +79,8 @@ pub trait Subscribe: Send + Sync + 'static {
 // Trait Implementations
 //--------------------------------------------------------------------------------------------------
 
+impl<T> Subscribe for T where T: Await {}
+
 #[async_trait]
 impl<T> poll::HostPollable for T
 where
@@ -87,16 +89,17 @@ where
     async fn block(&mut self, pollable: Resource<PollableHandle>) -> wasmtime::Result<()> {
         let table = self.table_mut();
         let pollable = table.get(&pollable)?;
-        let block = (pollable.block_future)(table.get_any_mut(pollable.resource_index)?);
-        block.await;
+        let wait = (pollable.wait_future)(table.get_any_mut(pollable.resource_index)?);
+        wait.await;
         Ok(())
     }
 
     async fn ready(&mut self, pollable: Resource<PollableHandle>) -> wasmtime::Result<bool> {
         let table = self.table_mut();
         let pollable = table.get(&pollable)?;
-        let block = (pollable.block_future)(table.get_any_mut(pollable.resource_index)?);
-        Ok(matches!(future::poll_immediate(block).await, Some(())))
+        let wait = (pollable.wait_future)(table.get_any_mut(pollable.resource_index)?);
+
+        Ok(future::poll_immediate(wait).await.is_some())
     }
 
     fn drop(&mut self, pollable: Resource<PollableHandle>) -> wasmtime::Result<()> {
@@ -130,7 +133,7 @@ where
             .iter()
             .map(|pollable| {
                 let pollable = table.get(pollable)?;
-                Ok((pollable.resource_index, pollable.block_future))
+                Ok((pollable.resource_index, pollable.wait_future))
             })
             .collect::<anyhow::Result<HashMap<u32, _>>>()?;
 
@@ -138,11 +141,11 @@ where
         let mut pollable_futures = table
             .iter_entries(pollable_futures_map)
             .enumerate()
-            .map(|(index, (entry, block_future))| Ok((index, block_future(entry?))))
+            .map(|(index, (entry, wait_future))| Ok((index, wait_future(entry?))))
             .collect::<anyhow::Result<Vec<_>>>()?;
 
         // Poll the `block` futures until one or more are ready.
-        let poller = poll_fn(|cx| {
+        let poller = future::poll_fn(|cx| {
             let mut indices = vec![];
             for (index, pollable_future) in pollable_futures.iter_mut() {
                 if let Poll::Ready(()) = pollable_future.as_mut().poll(cx) {

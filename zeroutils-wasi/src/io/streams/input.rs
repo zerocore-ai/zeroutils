@@ -4,7 +4,7 @@ use wasmtime::component::Resource;
 
 use crate::{
     bindgen::streams,
-    io::{PollableHandle, Subscribe},
+    io::{Await, PollableHandle, Subscribe},
     state::WasiTableState,
 };
 
@@ -23,7 +23,7 @@ pub type InputStreamHandle = Box<dyn InputStream>;
 
 /// An input stream implementation that conforms with `wasi:io/streams.input-stream`.
 #[async_trait]
-pub trait InputStream: Subscribe {
+pub trait InputStream: Await {
     /// Reads up to `len` bytes from the stream.
     /// This is a non-blocking operation and should return as early as possible.
     ///
@@ -42,6 +42,13 @@ pub trait InputStream: Subscribe {
 //--------------------------------------------------------------------------------------------------
 // Trait Implementations
 //--------------------------------------------------------------------------------------------------
+
+#[async_trait]
+impl Await for InputStreamHandle {
+    async fn wait(&mut self) {
+        (**self).wait().await
+    }
+}
 
 #[async_trait]
 impl<T> streams::HostInputStream for T
@@ -63,7 +70,7 @@ where
         len: u64,
     ) -> Result<Vec<u8>, StreamError> {
         let stream: &mut Box<dyn InputStream> = self.table_mut().get_mut(&stream)?;
-        stream.block().await;
+        stream.wait().await;
         stream.read(len).map(|bytes| bytes.to_vec())
     }
 
@@ -78,7 +85,7 @@ where
         len: u64,
     ) -> Result<u64, StreamError> {
         let stream: &mut Box<dyn InputStream> = self.table_mut().get_mut(&stream)?;
-        stream.block().await;
+        stream.wait().await;
         stream.skip(len)
     }
 
@@ -92,12 +99,5 @@ where
     fn drop(&mut self, stream: Resource<InputStreamHandle>) -> wasmtime::Result<()> {
         self.table_mut().delete(stream)?;
         Ok(())
-    }
-}
-
-#[async_trait]
-impl Subscribe for InputStreamHandle {
-    async fn block(&self) {
-        (**self).block().await;
     }
 }

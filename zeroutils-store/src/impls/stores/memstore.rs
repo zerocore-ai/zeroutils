@@ -106,7 +106,7 @@ where
         let bytes = Bytes::from(serde_ipld_dagcbor::to_vec(&data).map_err(StoreError::custom)?);
 
         // Check if the data exceeds the node maximum block size.
-        if let Some(max_size) = self.node_block_max_size() {
+        if let Some(max_size) = self.get_node_block_max_size() {
             if bytes.len() as u64 > max_size {
                 return Err(StoreError::NodeBlockTooLarge(bytes.len() as u64, max_size));
             }
@@ -118,7 +118,10 @@ where
         Ok(self.store_raw(bytes, Codec::DagCbor).await)
     }
 
-    async fn put_bytes<'a>(&'a self, reader: impl AsyncRead + Send + 'a) -> StoreResult<Cid> {
+    async fn put_bytes<'a>(
+        &'a self,
+        reader: impl AsyncRead + Send + Sync + 'a,
+    ) -> StoreResult<Cid> {
         let chunk_stream = self.chunker.chunk(reader).await?;
         let mut cid_stream = self.layout.organize(chunk_stream, self.clone()).await?;
 
@@ -131,9 +134,9 @@ where
         Ok(cid)
     }
 
-    async fn put_raw_block(&self, bytes: impl Into<Bytes> + Send) -> StoreResult<Cid> {
+    async fn put_raw_block(&self, bytes: impl Into<Bytes>) -> StoreResult<Cid> {
         let bytes = bytes.into();
-        if let Some(max_size) = self.raw_block_max_size() {
+        if let Some(max_size) = self.get_raw_block_max_size() {
             if bytes.len() as u64 > max_size {
                 return Err(StoreError::RawBlockTooLarge(bytes.len() as u64, max_size));
             }
@@ -162,7 +165,7 @@ where
     async fn get_bytes<'a>(
         &'a self,
         cid: &'a Cid,
-    ) -> StoreResult<Pin<Box<dyn AsyncRead + Send + 'a>>> {
+    ) -> StoreResult<Pin<Box<dyn AsyncRead + Send + Sync + 'a>>> {
         self.layout.retrieve(cid, self.clone()).await
     }
 
@@ -183,7 +186,7 @@ where
         blocks.contains_key(cid)
     }
 
-    fn supported_codecs(&self) -> HashSet<Codec> {
+    fn get_supported_codecs(&self) -> HashSet<Codec> {
         let mut codecs = HashSet::new();
         codecs.insert(Codec::DagCbor);
         codecs.insert(Codec::Raw);
@@ -191,12 +194,12 @@ where
     }
 
     #[inline]
-    fn node_block_max_size(&self) -> Option<u64> {
+    fn get_node_block_max_size(&self) -> Option<u64> {
         self.chunker.chunk_max_size()
     }
 
     #[inline]
-    fn raw_block_max_size(&self) -> Option<u64> {
+    fn get_raw_block_max_size(&self) -> Option<u64> {
         self.chunker.chunk_max_size()
     }
 }

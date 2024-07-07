@@ -23,7 +23,7 @@ impl Layout for TrickleDagLayout {
     async fn organize<'a>(
         &self,
         _stream: BoxStream<'a, StoreResult<Bytes>>,
-        _store: impl IpldStore + Send + 'a,
+        _store: impl IpldStore + Send + Sync + 'a,
     ) -> StoreResult<BoxStream<'a, StoreResult<Cid>>> {
         todo!() // TODO: To be implemented
     }
@@ -31,8 +31,8 @@ impl Layout for TrickleDagLayout {
     async fn retrieve<'a>(
         &self,
         _cid: &Cid,
-        _store: impl IpldStore + Send + 'a,
-    ) -> StoreResult<Pin<Box<dyn AsyncRead + Send + 'a>>> {
+        _store: impl IpldStore + Send + Sync + 'a,
+    ) -> StoreResult<Pin<Box<dyn AsyncRead + Send + Sync + 'a>>> {
         todo!() // TODO: To be implemented
     }
 }

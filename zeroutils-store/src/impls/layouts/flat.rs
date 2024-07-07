@@ -8,7 +8,7 @@ use std::{
 use aliasable::boxed::AliasableBox;
 use async_stream::try_stream;
 use bytes::Bytes;
-use futures::{future::BoxFuture, ready, stream::BoxStream, Future, StreamExt};
+use futures::{ready, stream::BoxStream, Future, StreamExt};
 use libipld::Cid;
 use tokio::io::{AsyncRead, AsyncSeek, ReadBuf};
 
@@ -83,7 +83,7 @@ where
     ///
     /// Holds a reference to other fields in this struct. Declared first to ensure it is dropped
     /// before the other fields.
-    get_raw_block_fn: BoxFuture<'static, StoreResult<Bytes>>,
+    get_raw_block_fn: Pin<Box<dyn Future<Output = StoreResult<Bytes>> + Send + Sync + 'static>>,
 
     /// The store associated with the reader.
     ///
@@ -122,18 +122,20 @@ where
         let store = AliasableBox::from_unique(Box::new(store));
 
         // Create future to get the first node child.
-        let get_raw_block_fn: Pin<Box<dyn Future<Output = StoreResult<Bytes>> + Send>> = Box::pin(
-            store.get_raw_block(
-                node.children
-                    .first()
-                    .map(|(cid, _)| cid)
-                    .ok_or(StoreError::from(LayoutError::NoLeafBlock))?,
-            ),
-        );
+        let get_raw_block_fn: Pin<Box<dyn Future<Output = StoreResult<Bytes>> + Send + Sync>> =
+            Box::pin(
+                store.get_raw_block(
+                    node.children
+                        .first()
+                        .map(|(cid, _)| cid)
+                        .ok_or(StoreError::from(LayoutError::NoLeafBlock))?,
+                ),
+            );
 
         // Unsafe magic to escape Rust ownership grip.
-        let get_raw_block_fn: Pin<Box<dyn Future<Output = StoreResult<Bytes>> + Send + 'static>> =
-            unsafe { std::mem::transmute(get_raw_block_fn) };
+        let get_raw_block_fn: Pin<
+            Box<dyn Future<Output = StoreResult<Bytes>> + Send + Sync + 'static>,
+        > = unsafe { std::mem::transmute(get_raw_block_fn) };
 
         Ok(FlatLayoutReader {
             byte_cursor: 0,
@@ -147,7 +149,7 @@ where
 
     fn fix_future(&mut self) {
         // Create future to get the next child.
-        let get_raw_block_fn: Pin<Box<dyn Future<Output = StoreResult<Bytes>> + Send>> =
+        let get_raw_block_fn: Pin<Box<dyn Future<Output = StoreResult<Bytes>> + Send + Sync>> =
             Box::pin(async {
                 let bytes = self
                     .store
@@ -169,8 +171,9 @@ where
             });
 
         // Unsafe magic to escape Rust ownership grip.
-        let get_raw_block_fn: Pin<Box<dyn Future<Output = StoreResult<Bytes>> + Send + 'static>> =
-            unsafe { std::mem::transmute(get_raw_block_fn) };
+        let get_raw_block_fn: Pin<
+            Box<dyn Future<Output = StoreResult<Bytes>> + Send + Sync + 'static>,
+        > = unsafe { std::mem::transmute(get_raw_block_fn) };
 
         // Update type's future.
         self.get_raw_block_fn = get_raw_block_fn;
@@ -281,7 +284,7 @@ impl Layout for FlatLayout {
         &self,
         cid: &Cid,
         store: impl IpldStore + Send + Sync + 'a,
-    ) -> StoreResult<Pin<Box<dyn AsyncRead + Send + 'a>>> {
+    ) -> StoreResult<Pin<Box<dyn AsyncRead + Send + Sync + 'a>>> {
         let node = store.get_node(cid).await?;
         let reader = FlatLayoutReader::new(node, store)?;
         Ok(Box::pin(reader))
@@ -517,6 +520,7 @@ mod fixtures {
         Pin<Box<dyn Stream<Item = StoreResult<Bytes>> + Send + 'static>>,
     ) {
         let data = b"Lorem ipsum dolor sit amet, consectetur adipiscing elit.".to_owned();
+
         let chunks = vec![
             Bytes::from("Lorem"),
             Bytes::from(" ipsu"),

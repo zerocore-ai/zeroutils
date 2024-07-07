@@ -35,7 +35,7 @@ impl Layout for BalancedDagLayout {
         &self,
         _cid: &Cid,
         _store: impl IpldStore + Send + 'a,
-    ) -> StoreResult<Pin<Box<dyn AsyncRead + Send + 'a>>> {
+    ) -> StoreResult<Pin<Box<dyn AsyncRead + Send + Sync + 'a>>> {
         todo!() // TODO: To be implemented
     }
 }
