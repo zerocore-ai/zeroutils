@@ -73,7 +73,7 @@ pub enum UcanError {
 
     /// Did Web Key error
     #[error("Did Web Key error: {0}")]
-    DidWebKeyError(#[from] zeroutils_did_wk::DidError),
+    DidWebKeyError(#[from] zeroutils_did::DidError),
 
     /// Invalid proof reference
     #[error("Invalid proof reference: {0}")]
@@ -113,7 +113,7 @@ pub enum UcanError {
 
     /// Ipld store error
     #[error("Ipld store error: {0}")]
-    IpldStoreError(#[from] zeroutils_store::StoreError),
+    IpldStoreError(#[from] zeroutils_store::cas::StoreError),
 
     /// Utf8 error
     #[error("Utf8 error: {0}")]

@@ -3275,12 +3275,12 @@ dependencies = [
  "thiserror",
  "toml 0.8.14",
  "typed-builder",
- "zeroutils-did-wk",
+ "zeroutils-did",
  "zeroutils-key",
 ]
 
 [[package]]
-name = "zeroutils-did-wk"
+name = "zeroutils-did"
 version = "0.1.0"
 dependencies = [
  "anyhow",
@@ -3294,6 +3294,14 @@ dependencies = [
  "thiserror",
  "tracing",
  "zeroutils-key",
+]
+
+[[package]]
+name = "zeroutils-ipc"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "thiserror",
 ]
 
 [[package]]
@@ -3359,7 +3367,7 @@ dependencies = [
  "thiserror",
  "tokio",
  "tracing",
- "zeroutils-did-wk",
+ "zeroutils-did",
  "zeroutils-key",
  "zeroutils-store",
 ]

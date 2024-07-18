@@ -9,9 +9,10 @@ use serde::{
     de::{self, DeserializeSeed},
     Deserialize, Deserializer, Serialize,
 };
-use zeroutils_did_wk::WrappedDidWebKey;
+
+use zeroutils_did::did_wk::WrappedDidWebKey;
 use zeroutils_key::{GetPublicKey, JwsAlgName, JwsAlgorithm, Sign, Verify};
-use zeroutils_store::{
+use zeroutils_store::cas::{
     IpldStore, IpldStoreExt, PlaceholderStore, Storable, StoreError, StoreResult,
 };
 
@@ -471,9 +472,9 @@ where
 mod tests {
     use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-    use zeroutils_did_wk::Base;
+    use zeroutils_did::Base;
     use zeroutils_key::{Ed25519KeyPair, KeyPairGenerate};
-    use zeroutils_store::MemoryStore;
+    use zeroutils_store::cas::MemoryStore;
 
     use crate::caps;
 

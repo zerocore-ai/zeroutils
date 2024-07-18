@@ -4,9 +4,9 @@ use std::{collections::HashSet, iter};
 
 use async_recursion::async_recursion;
 use libipld::Cid;
-use zeroutils_did_wk::WrappedDidWebKey;
+use zeroutils_did::did_wk::WrappedDidWebKey;
 use zeroutils_key::{GetPublicKey, IntoOwned};
-use zeroutils_store::IpldStore;
+use zeroutils_store::cas::IpldStore;
 
 use crate::{
     AttenuationError, CapabilityTuple, ProofReference, ResolvedCapabilities,

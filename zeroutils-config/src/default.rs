@@ -2,7 +2,10 @@
 
 use std::net::{IpAddr, Ipv4Addr};
 
-use zeroutils_did_wk::{Base, DidWebKey, WrappedDidWebKey};
+use zeroutils_did::{
+    did_wk::{DidWebKey, WrappedDidWebKey},
+    Base,
+};
 use zeroutils_key::{Ed25519KeyPair, IntoOwned, KeyPairGenerate};
 
 //--------------------------------------------------------------------------------------------------

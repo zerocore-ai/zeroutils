@@ -14,8 +14,8 @@ use serde::{
     de::{self, DeserializeSeed},
     Deserialize, Deserializer, Serialize, Serializer,
 };
-use zeroutils_did_wk::WrappedDidWebKey;
-use zeroutils_store::IpldStore;
+use zeroutils_did::did_wk::WrappedDidWebKey;
+use zeroutils_store::cas::IpldStore;
 
 use crate::{Capabilities, Facts, Proofs, UcanError, UcanResult};
 
@@ -396,7 +396,7 @@ where
 
 #[cfg(test)]
 mod tests {
-    use zeroutils_store::PlaceholderStore;
+    use zeroutils_store::cas::PlaceholderStore;
 
     use super::*;
     use std::{str::FromStr, time::Duration};

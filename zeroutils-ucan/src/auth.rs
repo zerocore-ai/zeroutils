@@ -1,7 +1,7 @@
 use std::{ops::Deref, sync::Arc};
 
 use zeroutils_key::GetPublicKey;
-use zeroutils_store::IpldStore;
+use zeroutils_store::cas::IpldStore;
 
 use crate::{ResolvedCapabilityTuple, SignedUcan, UcanResult};
 

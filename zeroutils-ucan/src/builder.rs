@@ -2,9 +2,9 @@ use std::time::SystemTime;
 
 use libipld::Cid;
 use serde_json::Value;
-use zeroutils_did_wk::{Base, WrappedDidWebKey};
+use zeroutils_did::{did_wk::WrappedDidWebKey, Base};
 use zeroutils_key::{GetPublicKey, IntoOwned, JwsAlgName, Sign};
-use zeroutils_store::IpldStore;
+use zeroutils_store::cas::IpldStore;
 
 use crate::{Capabilities, Facts, Proofs, SignedUcan, Ucan, UcanPayload, UcanResult};
 
@@ -267,7 +267,7 @@ mod tests {
 
     use anyhow::Ok;
     use zeroutils_key::{Ed25519KeyPair, KeyPairGenerate};
-    use zeroutils_store::PlaceholderStore;
+    use zeroutils_store::cas::PlaceholderStore;
 
     use crate::caps;
 

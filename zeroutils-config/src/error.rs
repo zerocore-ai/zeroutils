@@ -52,7 +52,7 @@ impl ConfigError {
 // Functions
 //--------------------------------------------------------------------------------------------------
 
-/// Creates an `Ok` `DidResult`.
+/// Creates an `Ok` `ConfigResult`.
 #[allow(non_snake_case)]
 pub fn Ok<T>(value: T) -> ConfigResult<T> {
     Result::Ok(value)

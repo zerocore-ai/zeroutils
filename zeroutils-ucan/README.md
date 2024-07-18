@@ -24,7 +24,8 @@
   </p> -->
 </div>
 
-**`zeroutils-ucan`** implements the [UCAN (User Controlled Authorization Network)][ucan] protocol.
+**`zeroutils-ucan`** implements the [UCAN (User Controlled Authorization Network)][ucan] protocol version `0.10.0`.
+This is most likely going to get replaced by a more IPLD-friendly version `1.0` in the future with invocation and revocation support.
 
 </br>
 

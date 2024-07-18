@@ -2,7 +2,8 @@
 members = [
     "zeroutils-cli",
     "zeroutils-config",
-    "zeroutils-did-wk",
+    "zeroutils-did",
+    "zeroutils-ipc",
     "zeroutils-key",
     "zeroutils-store",
     "zeroutils-ucan",

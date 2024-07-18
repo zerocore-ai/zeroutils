@@ -4,9 +4,9 @@ use std::{
 };
 
 use rand::thread_rng;
-use zeroutils_did_wk::{Base, WrappedDidWebKey};
+use zeroutils_did::{did_wk::WrappedDidWebKey, Base};
 use zeroutils_key::{Ed25519KeyPair, KeyPairGenerate};
-use zeroutils_store::{MemoryStore, Storable};
+use zeroutils_store::cas::{MemoryStore, Storable};
 
 use crate::{caps, Ability, Caveats, ResolvedResource, Ucan};
 

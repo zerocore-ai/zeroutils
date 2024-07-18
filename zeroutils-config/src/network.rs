@@ -9,7 +9,7 @@ use std::{
 use serde::{Deserialize, Serialize};
 use structstruck::strike;
 use typed_builder::TypedBuilder;
-use zeroutils_did_wk::WrappedDidWebKey;
+use zeroutils_did::did_wk::WrappedDidWebKey;
 
 use crate::{ConfigError, ConfigResult};
 
@@ -113,12 +113,12 @@ where
     }
 
     /// Gets the peer address.
-    pub fn peer_address(&self) -> SocketAddr {
+    pub fn get_peer_address(&self) -> SocketAddr {
         SocketAddr::new(self.host, self.peer_port)
     }
 
     /// Gets the user address.
-    pub fn user_address(&self) -> SocketAddr {
+    pub fn get_user_address(&self) -> SocketAddr {
         SocketAddr::new(self.host, self.user_port)
     }
 }

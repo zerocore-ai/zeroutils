@@ -1,5 +1,5 @@
 use libipld::Cid;
-use zeroutils_did_wk::WrappedDidWebKey;
+use zeroutils_did::did_wk::WrappedDidWebKey;
 
 use crate::{CapabilityTuple, Scheme};
 

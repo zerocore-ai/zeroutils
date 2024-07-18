@@ -5,7 +5,7 @@ use std::{
     str::FromStr,
 };
 
-use zeroutils_did_wk::WrappedDidWebKey;
+use zeroutils_did::did_wk::WrappedDidWebKey;
 
 use crate::{Ability, CapabilityTuple, Caveats, NonUcanUri};
 

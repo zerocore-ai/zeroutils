@@ -6,7 +6,7 @@ use std::{
 use async_once_cell::OnceCell;
 use libipld::Cid;
 use serde::{Deserialize, Serialize};
-use zeroutils_store::{IpldStore, IpldStoreExt, PlaceholderStore};
+use zeroutils_store::cas::{IpldStore, IpldStoreExt, PlaceholderStore};
 
 use crate::{SignedUcan, UcanError, UcanResult};
 
@@ -258,9 +258,9 @@ mod tests {
         time::{Duration, SystemTime},
     };
 
-    use zeroutils_did_wk::{Base, WrappedDidWebKey};
+    use zeroutils_did::{did_wk::WrappedDidWebKey, Base};
     use zeroutils_key::{Ed25519KeyPair, KeyPairGenerate};
-    use zeroutils_store::MemoryStore;
+    use zeroutils_store::cas::MemoryStore;
 
     use crate::{caps, Ucan};
 

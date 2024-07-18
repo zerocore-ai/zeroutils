@@ -11,7 +11,7 @@ use lazy_static::lazy_static;
 use libipld::Cid;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
-use zeroutils_did_wk::WrappedDidWebKey;
+use zeroutils_did::did_wk::WrappedDidWebKey;
 
 use crate::UcanError;
 
